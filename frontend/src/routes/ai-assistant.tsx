@@ -7,11 +7,10 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useApp } from "@/context/AppContext";
-import { useT } from "@/i18n/translations";
-import { derivePersona } from "@/lib/persona";
-import { generateFinancialAdvice, type ChatMessage } from "@/lib/assistant";
+import { useApp, type Language } from "@/context/AppContext";
+import { useT, LANGUAGES } from "@/i18n/translations";
 import { transcribeAudio } from "@/lib/voice";
+import { announce, stopAnnounce } from "@/lib/a11y";
 import aiAvatar from "@/assets/ai-assistant-hero.png";
 
 export const Route = createFileRoute("/ai-assistant")({
@@ -34,37 +33,60 @@ function AssistantGuarded() {
 
 function uid() { return Math.random().toString(36).slice(2); }
 
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  ts: number;
+}
+
+const QUICK_LANGUAGES = LANGUAGES.filter((l) => ["en", "hi", "mr", "kn"].includes(l.code));
+
+async function callAssistantAPI(text: string, language: string) {
+  const deviceId = localStorage.getItem("artharakshak_device_id") ?? "";
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/voice/reply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_id: deviceId, text, language }),
+  });
+  if (!res.ok) throw new Error("Assistant request failed");
+  return res.json();
+}
+
 function AssistantPage() {
   const t = useT();
-  const { incomeType, concerns } = useApp();
-  const persona = derivePersona(incomeType);
+  const { language, setLanguage } = useApp();
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     { id: uid(), role: "assistant", content: t("ai_greeting"), ts: Date.now() },
-    { id: uid(), role: "user", content: t("ai_sampleUser"), ts: Date.now() },
-    {
-      id: uid(), role: "assistant",
-      content: "Based on your income and current risks, **waiting 6 months may save you ₹48,000 in interest** and keep your EMI under 35% of your income. Want me to simulate both futures in Future Self?",
-      ts: Date.now(),
-    },
   ]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [listening, setListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, thinking]);
 
-  function reply(text: string) {
+  async function reply(text: string) {
     setMessages((m) => [...m, { id: uid(), role: "user", content: text, ts: Date.now() }]);
     setThinking(true);
-    setTimeout(() => {
-      const ans = generateFinancialAdvice(text, { persona, incomeType, concerns });
-      setMessages((m) => [...m, { id: uid(), role: "assistant", content: ans, ts: Date.now() }]);
-      setThinking(false);
-    }, 800);
+    try {
+      const result = await callAssistantAPI(text, language);
+      const answer = result.reply ?? "Sorry, I couldn't understand that. Please try again.";
+      setMessages((m) => [...m, { id: uid(), role: "assistant", content: answer, ts: Date.now() }]);
+      announce(answer, language);
+    } catch (error) {
+      console.error(error);
+      setMessages((m) => [...m, {
+        id: uid(), role: "assistant",
+        content: "I'm having trouble reaching the Guardian right now. Please try again in a moment.",
+        ts: Date.now(),
+      }]);
+    }
+    setThinking(false);
   }
 
   function submit(e?: React.FormEvent) {
@@ -72,28 +94,51 @@ function AssistantPage() {
     const trimmed = input.trim();
     if (!trimmed) return;
     setInput("");
+    stopAnnounce();
     reply(trimmed);
   }
 
   async function startVoice() {
     if (listening || thinking) return;
+    setVoiceError(null);
     setListening(true);
-    const txt = await transcribeAudio();
-    setListening(false);
-    reply(txt);
+    try {
+      const txt = await transcribeAudio(language);
+      setListening(false);
+      reply(txt);
+    } catch (error) {
+      setListening(false);
+      setVoiceError(error instanceof Error ? error.message : "Could not hear that. Please try again or type instead.");
+    }
   }
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <Navbar />
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-6 py-8">
-        <header className="mb-6 flex items-center gap-4">
+        <header className="mb-4 flex items-center gap-4">
           <img src={aiAvatar} alt="" width={64} height={64} loading="lazy" className="size-14 rounded-2xl bg-accent p-1" />
           <div>
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{t("ai_title")}</h1>
             <p className="text-sm text-muted-foreground">{t("ai_sub")}</p>
           </div>
         </header>
+
+        <div className="mb-6 flex flex-wrap gap-2">
+          {QUICK_LANGUAGES.map((l) => (
+            <button
+              key={l.code}
+              type="button"
+              onClick={() => setLanguage(l.code as Language)}
+              aria-pressed={language === l.code}
+              className={`rounded-full border px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                language === l.code ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              {l.native}
+            </button>
+          ))}
+        </div>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto rounded-3xl border border-border bg-card p-6">
           <ScrollArea className="h-full">
@@ -136,6 +181,8 @@ function AssistantPage() {
           </ScrollArea>
         </div>
 
+        {voiceError && <p className="mt-2 text-xs text-destructive">{voiceError}</p>}
+
         <form onSubmit={submit} className="mt-4 rounded-3xl border border-border bg-card p-3 shadow-sm">
           <Textarea
             value={input}
@@ -165,7 +212,6 @@ function AssistantPage() {
   );
 }
 
-// Lightweight inline markdown: **bold** + *italic* only. Safe — escapes HTML first.
 function formatInline(text: string): string {
   const escaped = text
     .replace(/&/g, "&amp;")

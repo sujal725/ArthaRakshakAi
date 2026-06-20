@@ -43,7 +43,7 @@ type Phase = "idle" | "listening" | "thinking" | "speaking";
 function uid() { return Math.random().toString(36).slice(2); }
 
 function VoicePage() {
-  const { a11yMode, setA11yMode, incomeType } = useApp();
+  const { a11yMode, setA11yMode, incomeType, language } = useApp();
   const memory = useGuardianMemory();
   const [phase, setPhase] = useState<Phase>("idle");
   const [currentUser, setCurrentUser] = useState<string | null>(null);
@@ -69,7 +69,7 @@ function VoicePage() {
       await new Promise((r) => setTimeout(r, 1200));
       text = prefill;
     } else {
-      text = await transcribeAudio();
+      text = await transcribeAudio(language);
     }
     setCurrentUser(text);
     setPhase("thinking");

@@ -3,18 +3,54 @@
 // TODO: Wire analyzeVoiceScam() to scam-classifier model (Gemini/OpenAI).
 // TODO: Wire speakResult() to Bhashini TTS or browser Web Speech.
 
+import type { IncomeType, Language } from "@/context/AppContext";
+import type { Persona } from "./persona";
+import type { FinancialTwin } from "./financialTwin";
 export interface VoiceVerdict {
   verdict: string;
   confidence: number; // 0–100
   level: "low" | "medium" | "high";
 }
 
-const SAMPLE_TRANSCRIPT =
-  "Sir, your bank account will be blocked. Please share your OTP to verify your identity.";
+const STT_LANG_TAGS: Record<Language, string> = {
+  en: "en-IN", hi: "hi-IN", mr: "mr-IN", ta: "ta-IN", kn: "kn-IN", te: "te-IN", bn: "bn-IN",
+};
 
-export async function transcribeAudio(_blob?: Blob): Promise<string> {
-  await new Promise((r) => setTimeout(r, 1800));
-  return SAMPLE_TRANSCRIPT;
+export function isSpeechRecognitionSupported(): boolean {
+  return typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window);
+}
+
+export function transcribeAudio(language: Language = "en"): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      reject(new Error("Speech recognition isn't supported in this browser. Try Chrome, or type your question instead."));
+      return;
+    }
+
+    let settled = false;
+    const recognition = new SpeechRecognition();
+    recognition.lang = STT_LANG_TAGS[language] ?? "en-IN";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event: any) => {
+      settled = true;
+      resolve(event.results[0][0].transcript);
+    };
+
+    recognition.onerror = (event: any) => {
+      settled = true;
+      reject(new Error(event.error === "no-speech" ? "I didn't catch that. Please try again." : "Could not access the microphone."));
+    };
+
+    recognition.onend = () => {
+      if (!settled) reject(new Error("I didn't catch that. Please try again."));
+    };
+
+    recognition.start();
+  });
 }
 
 export async function analyzeVoiceScam(_text: string): Promise<VoiceVerdict> {
@@ -32,10 +68,6 @@ export async function speakResult(_text: string): Promise<void> {
 }
 
 /* =================== Voice Guardian intelligence =================== */
-
-import type { IncomeType } from "@/context/AppContext";
-import type { Persona } from "./persona";
-import type { FinancialTwin } from "./financialTwin";
 
 export interface VoiceTurn {
   id: string;

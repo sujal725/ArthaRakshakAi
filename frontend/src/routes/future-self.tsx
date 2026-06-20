@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/i18n/translations";
 import {
-  simulateLoanNow, simulateDelayedSIP, formatINR,
+  simulateLoanNow, simulateDelayedSIP, formatINR, buildAdviceLine,
   type SimInputs, type Scenario, type SimResult,
 } from "@/lib/futureSelf";
 import { useGuardianMemory } from "@/context/GuardianMemory";
@@ -150,8 +150,7 @@ function FutureSelfPage() {
                 <div className="flex-1">
                   <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{t("fs_advice")}</p>
                   <p className="mt-2 text-lg font-semibold leading-relaxed">
-                    Based on your profile, waiting 12 months and investing ₹{savings.toLocaleString("en-IN")}/month
-                    creates a <span className="underline decoration-white/50 underline-offset-2">3× better financial outcome</span> than taking the loan today.
+                    {buildAdviceLine(results.now, results.delay, savings, tenure)}
                   </p>
                   <Button
                     variant="secondary"
