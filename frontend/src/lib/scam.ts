@@ -2,12 +2,18 @@
 
 export type RiskLevel = "low" | "medium" | "high";
 
+export interface ScamReason {
+  explanation: string;
+  evidence: string | null;
+}
+
 export interface ScamVerdict {
   score: number; // 0–100
   level: RiskLevel;
-  reasons: string[];
+  reasons: ScamReason[];
   recommendations: string[];
   pattern?: string;
+  extracted_text?: string;
 }
 
 const SCAM_KEYWORDS: { kw: RegExp; reason: string; weight: number }[] = [
@@ -42,10 +48,10 @@ export async function analyzeMessage(text: string): Promise<ScamVerdict> {
   const level: RiskLevel = score >= 65 ? "high" : score >= 35 ? "medium" : "low";
   const pattern =
     /refund|cashback/i.test(text) ? "Fake UPI Refund"
-    : /courier|parcel/i.test(text) ? "Courier Scam"
-    : /kyc/i.test(text) ? "Fake KYC Update"
-    : /lottery|won|prize/i.test(text) ? "Lottery Scam"
-    : level === "high" ? "Suspicious request" : undefined;
+      : /courier|parcel/i.test(text) ? "Courier Scam"
+        : /kyc/i.test(text) ? "Fake KYC Update"
+          : /lottery|won|prize/i.test(text) ? "Lottery Scam"
+            : level === "high" ? "Suspicious request" : undefined;
 
   if (reasons.length === 0) reasons.push("No obvious scam patterns detected");
 
@@ -53,8 +59,8 @@ export async function analyzeMessage(text: string): Promise<ScamVerdict> {
     level === "high"
       ? ["Do not click any links", "Do not share OTP, PIN or CVV", "Block the sender and report to 1930"]
       : level === "medium"
-      ? ["Verify the sender via an official channel", "Avoid clicking unknown links"]
-      : ["Looks safe — stay alert anyway"];
+        ? ["Verify the sender via an official channel", "Avoid clicking unknown links"]
+        : ["Looks safe — stay alert anyway"];
 
   return { score, level, reasons: reasons.slice(0, 4), recommendations, pattern };
 }

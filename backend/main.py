@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from db import Base, engine
-from routes import memory, scam, voice, future_self
+from routes import memory, scam, voice, future_self, trends
 
 Base.metadata.create_all(bind=engine)
 

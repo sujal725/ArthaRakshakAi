@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ShieldCheck, Mic, AlertTriangle, TrendingUp, TrendingDown, Upload, Sparkles, MapPin,
 } from "lucide-react";
@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n/translations";
-import { analyzeMessage, analyzeScreenshot, SCREENSHOT_HIGHLIGHTS, type ScamVerdict } from "@/lib/scam";
+import type { ScamVerdict } from "@/lib/scam";
 import { transcribeAudio, analyzeVoiceScam, type VoiceVerdict } from "@/lib/voice";
 import { useGuardianMemory } from "@/context/GuardianMemory";
 import { TwinHint } from "@/components/TwinHint";
@@ -105,9 +105,19 @@ function VerdictCard({ verdict, t }: { verdict: ScamVerdict; t: (k: string) => s
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
             <div>
               <p className="mb-1 text-sm font-semibold">{t("ss_reasons")}</p>
-              <ul className="space-y-1 text-sm text-muted-foreground">
-                {verdict.reasons.map((r) => (
-                  <li key={r} className="flex gap-2"><AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" /> {r}</li>
+              <ul className="space-y-2.5 text-sm text-muted-foreground">
+                {verdict.reasons.map((r, i) => (
+                  <li key={i} className="flex gap-2">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" />
+                    <span>
+                      {r.explanation}
+                      {r.evidence && (
+                        <span className="mt-1 block rounded-md bg-warning/10 px-2 py-1 text-xs italic text-warning-foreground">
+                          "{r.evidence}"
+                        </span>
+                      )}
+                    </span>
+                  </li>
                 ))}
               </ul>
             </div>
@@ -127,6 +137,14 @@ function VerdictCard({ verdict, t }: { verdict: ScamVerdict; t: (k: string) => s
           <span className="font-semibold text-primary">{t("ss_pattern")}: </span>
           <span className="text-accent-foreground">{verdict.pattern}</span>
         </div>
+      )}
+      {verdict.extracted_text && (
+        <details className="mt-4 rounded-2xl border border-border bg-muted/30 p-3 text-sm">
+          <summary className="cursor-pointer font-medium text-muted-foreground">
+            View extracted text from screenshot
+          </summary>
+          <p className="mt-2 whitespace-pre-wrap text-foreground">{verdict.extracted_text}</p>
+        </details>
       )}
     </article>
   );
@@ -193,32 +211,57 @@ function ThinkingPulse({ label }: { label: string }) {
     </div>
   );
 }
+async function callScamImageAPI(file: File) {
+  const deviceId = localStorage.getItem("artharakshak_device_id") ?? "";
+  const formData = new FormData();
+  formData.append("device_id", deviceId);
+  formData.append("file", file);
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/scam/analyze-image`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) throw new Error("Image analysis failed");
+  return res.json();
+}
 
 function ScreenshotTab() {
   const t = useT();
+  const memory = useGuardianMemory();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [verdict, setVerdict] = useState<ScamVerdict | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function pick(f: File | undefined) {
     if (!f) return;
-    setFile(f); setVerdict(null);
+    setFile(f); setVerdict(null); setError(null);
     const url = URL.createObjectURL(f);
     setPreview(url);
   }
 
   async function run() {
-    setLoading(true); setVerdict(null);
-    const v = await callScamAPI(text);
-    setVerdict(v); setLoading(false);
-    memory.setScamRiskScore(v.score);
-    memory.logAction({
-      module: "scam",
-      action: v.level === "high" ? "Avoided high-risk scam message" : "Analyzed a suspicious message",
-      riskImpact: Math.round(v.score / 5),
-    });
+    if (!file) return;
+    setLoading(true); setVerdict(null); setError(null);
+    try {
+      const v = await callScamImageAPI(file);
+      if (v.score === null || v.score === undefined) {
+        setError("Could not read any text from this image clearly. Try a clearer screenshot or paste the text instead.");
+        setLoading(false);
+        return;
+      }
+      setVerdict(v);
+      memory.setScamRiskScore(v.score);
+      memory.logAction({
+        module: "scam",
+        action: v.level === "high" ? "Avoided high-risk scam screenshot" : "Analyzed a suspicious screenshot",
+        riskImpact: Math.round(v.score / 5),
+      });
+    } catch {
+      setError("Could not reach the Guardian. Please try again.");
+    }
+    setLoading(false);
   }
 
   return (
@@ -240,19 +283,17 @@ function ScreenshotTab() {
         <div className="mt-6 grid gap-6 md:grid-cols-2">
           <div className="relative overflow-hidden rounded-2xl border border-border bg-muted">
             <img src={preview} alt="Screenshot preview" className="w-full" />
-            {verdict && SCREENSHOT_HIGHLIGHTS.map((h, i) => (
-              <span key={i}
-                style={{ left: `${h.x}%`, top: `${h.y}%`, width: `${h.w}%`, height: `${h.h}%` }}
-                className="pointer-events-none absolute rounded-md border-2 border-destructive bg-destructive/10 animate-in fade-in duration-500">
-                <span className="absolute -top-6 left-0 rounded bg-destructive px-1.5 py-0.5 text-[10px] font-semibold text-destructive-foreground">{h.label}</span>
-              </span>
-            ))}
           </div>
           <div>
-            <Button onClick={run} disabled={loading} size="lg" className="w-full rounded-full bg-gradient-emerald">
+            <Button onClick={run} disabled={loading || !file} size="lg" className="w-full rounded-full bg-gradient-emerald">
               {loading ? t("ss_thinking") : t("ss_analyzeShot")}
             </Button>
             {loading && <ThinkingPulse label={t("ss_thinking")} />}
+            {error && (
+              <div className="mt-4 rounded-2xl border border-warning/40 bg-warning/5 p-4 text-sm text-warning-foreground">
+                {error}
+              </div>
+            )}
             {verdict && <VerdictCard verdict={verdict} t={t} />}
           </div>
         </div>
@@ -315,47 +356,120 @@ function VoiceTab() {
   );
 }
 
-const TRENDS = [
-  { label: "Fake UPI Refund", count: "+38%", up: true },
-  { label: "Courier / Customs Scam", count: "+22%", up: true },
-  { label: "Fake Investment Tips", count: "+17%", up: true },
-  { label: "Lottery / Prize Scam", count: "-9%", up: false },
-];
+interface CommunityReportsSummary {
+  total_messages_checked: number;
+  total_flagged: number;
+  top_patterns: { pattern: string; count: number }[];
+  note: string;
+}
+
+interface NationalFraudReference {
+  source: string;
+  source_url: string;
+  last_updated: string;
+  categories: { category: string; trend: "rising" | "declining"; note: string }[];
+}
 
 function TrendsTab() {
   const t = useT();
+  const [community, setCommunity] = useState<CommunityReportsSummary | null>(null);
+  const [reference, setReference] = useState<NationalFraudReference | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const base = import.meta.env.VITE_API_BASE_URL;
+    Promise.all([
+      fetch(`${base}/api/trends/community-reports`).then((r) => r.json()),
+      fetch(`${base}/api/trends/national-fraud-reference`).then((r) => r.json()),
+    ])
+      .then(([communityData, referenceData]) => {
+        setCommunity(communityData);
+        setReference(referenceData);
+      })
+      .catch(() => {
+        setCommunity(null);
+        setReference(null);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div className="space-y-6">
+      {/* Real, live community intelligence — built from this app's actual usage */}
       <div className="rounded-3xl border border-border bg-card p-6">
-        <p className="text-xs font-semibold uppercase tracking-wide text-primary">{t("ss_trendsTitle")}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{t("ss_trendsSub")}</p>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          {TRENDS.map((t2) => (
-            <div key={t2.label} className="flex items-center justify-between rounded-2xl border border-border bg-card p-4 card-lift">
-              <div>
-                <p className="font-semibold">{t2.label}</p>
-                <p className="text-xs text-muted-foreground">Last 7 days</p>
-              </div>
-              <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${t2.up ? "bg-destructive/15 text-destructive" : "bg-primary/15 text-primary"}`}>
-                {t2.up ? <TrendingUp className="size-4" /> : <TrendingDown className="size-4" />} {t2.count}
-              </span>
-            </div>
-          ))}
+        <div className="flex items-center gap-2">
+          <span className="size-2 rounded-full bg-primary animate-pulse" />
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Live Community Intelligence</p>
         </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Real data from ArthaRakshak Guardians who have checked messages with Scam Shield.
+        </p>
+
+        {loading ? (
+          <p className="mt-4 text-sm text-muted-foreground">Loading community data…</p>
+        ) : community && community.total_messages_checked > 0 ? (
+          <>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl border border-border bg-accent/30 p-4">
+                <p className="text-xs text-muted-foreground">Messages checked by Guardians</p>
+                <p className="mt-1 text-2xl font-bold text-foreground">{community.total_messages_checked}</p>
+              </div>
+              <div className="rounded-2xl border border-border bg-destructive/5 p-4">
+                <p className="text-xs text-muted-foreground">Flagged as risky</p>
+                <p className="mt-1 text-2xl font-bold text-destructive">{community.total_flagged}</p>
+              </div>
+            </div>
+            {community.top_patterns.length > 0 && (
+              <div className="mt-5">
+                <p className="mb-2 text-sm font-semibold">Most common patterns reported by Guardians</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {community.top_patterns.map((p) => (
+                    <div key={p.pattern} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
+                      <span className="text-sm">{p.pattern}</span>
+                      <span className="rounded-full bg-destructive/15 px-2.5 py-0.5 text-xs font-bold text-destructive">
+                        {p.count} {p.count === 1 ? "report" : "reports"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="mt-4 rounded-2xl border border-dashed border-border bg-muted/30 p-5 text-center text-sm text-muted-foreground">
+            No community reports yet — be the first Guardian to check a message in Scam Shield.
+          </p>
+        )}
       </div>
-      <div className="rounded-3xl border border-border bg-card p-6 text-center">
-        <MapPin className="mx-auto size-6 text-primary" />
-        <svg viewBox="0 0 200 220" className="mx-auto mt-4 h-56 w-auto text-primary/30" aria-hidden>
-          <path
-            d="M100 10 C140 20 170 60 175 110 C180 160 150 200 100 210 C50 200 20 160 25 110 C30 60 60 20 100 10 Z"
-            fill="currentColor"
-          />
-          {[[80, 60], [120, 90], [70, 130], [130, 150], [100, 180]].map(([x, y], i) => (
-            <circle key={i} cx={x} cy={y} r="4" className="fill-primary animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
-          ))}
-        </svg>
-        <p className="mt-3 text-sm text-muted-foreground">{t("ss_trendsFooter")}</p>
-      </div>
+
+      {/* Real published national reference data — clearly sourced, not fabricated */}
+      {reference && (
+        <div className="rounded-3xl border border-border bg-card p-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">National Fraud Trends</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Published reference data from{" "}
+            <a href={reference.source_url} target="_blank" rel="noopener noreferrer" className="underline">
+              {reference.source}
+            </a>{" "}
+            ({reference.last_updated})
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {reference.categories.map((c) => (
+              <div key={c.category} className="rounded-2xl border border-border bg-card p-4 card-lift">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold">{c.category}</p>
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${c.trend === "rising" ? "bg-destructive/15 text-destructive" : "bg-primary/15 text-primary"
+                    }`}>
+                    {c.trend === "rising" ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+                    {c.trend}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{c.note}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
