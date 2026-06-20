@@ -19,6 +19,7 @@ app.include_router(memory.router, prefix="/api")
 app.include_router(scam.router, prefix="/api")
 app.include_router(voice.router, prefix="/api")
 app.include_router(future_self.router, prefix="/api")
+app.include_router(trends.router, prefix="/api")
 
 @app.get("/")
 def root():
