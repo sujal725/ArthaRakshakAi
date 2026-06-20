@@ -4,7 +4,6 @@ import { Wallet, TrendingDown, CreditCard, ShieldCheck, Users } from "lucide-rea
 import { useApp } from "@/context/AppContext";
 import { useT } from "@/i18n/translations";
 import { StepHeader } from "@/components/onboarding/StepHeader";
-import { StepNav } from "@/components/onboarding/StepNav";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -16,7 +15,9 @@ export const Route = createFileRoute("/onboarding/cashflow")({
 
 function CashflowStep() {
     const t = useT();
-    const { incomeType } = useApp();
+    const { incomeType, setFinancialProfile } = useApp();
+    const nav = useNavigate();
+
     const [monthlyIncome, setMonthlyIncome] = useState<number | "">("");
     const [incomeFrequency, setIncomeFrequency] = useState<"monthly" | "weekly" | "irregular" | "seasonal">(
         incomeType === "gig" ? "irregular" : incomeType === "farmer" ? "seasonal" : "monthly"
@@ -34,6 +35,46 @@ function CashflowStep() {
         { id: "irregular", label: "Irregular / gig-based" },
         { id: "seasonal", label: "Seasonal (e.g. farming)" },
     ];
+
+    async function handleNext() {
+        const income = monthlyIncome === "" ? null : Number(monthlyIncome);
+        const exp = expenses === "" ? null : Number(expenses);
+        const emi = emiTotal === "" ? null : Number(emiTotal);
+        const deps = dependents === "" ? null : Number(dependents);
+
+        // Save to AppContext so every page can use it
+        setFinancialProfile({
+            monthlyIncome: income,
+            incomeFrequency,
+            monthlyExpenses: exp,
+            existingEmiTotal: emi,
+            hasEmergencyFund,
+            dependentsCount: deps,
+        });
+
+        // Also persist to backend
+        const deviceId = localStorage.getItem("artharakshak_device_id");
+        if (deviceId) {
+            try {
+                await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/onboarding`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        device_id: deviceId,
+                        monthly_income: income,
+                        income_frequency: incomeFrequency,
+                        monthly_expenses_estimate: exp,
+                        existing_emi_total: emi,
+                        has_emergency_fund: hasEmergencyFund,
+                        dependents_count: deps,
+                    }),
+                });
+            } catch {
+                // Non-blocking
+            }
+        }
+        nav({ to: "/onboarding/concern" });
+    }
 
     return (
         <>
@@ -64,8 +105,7 @@ function CashflowStep() {
                                 {FREQ_OPTIONS.map((f) => (
                                     <button
                                         key={f.id} type="button" onClick={() => setIncomeFrequency(f.id)}
-                                        className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${incomeFrequency === f.id ? "border-primary bg-primary/5 text-primary" : "border-border bg-card text-muted-foreground"
-                                            }`}
+                                        className={`rounded-xl border px-3 py-2 text-xs font-medium transition ${incomeFrequency === f.id ? "border-primary bg-primary/5 text-primary" : "border-border bg-card text-muted-foreground"}`}
                                     >
                                         {f.label}
                                     </button>
@@ -129,65 +169,23 @@ function CashflowStep() {
                 </div>
             </div>
 
-            <CashflowStepNav
-                canNext={canNext}
-                payload={{
-                    monthlyIncome: monthlyIncome === "" ? null : monthlyIncome,
-                    incomeFrequency,
-                    expenses: expenses === "" ? null : expenses,
-                    emiTotal: emiTotal === "" ? null : emiTotal,
-                    hasEmergencyFund,
-                    dependents: dependents === "" ? null : dependents,
-                }}
-            />
+            <div className="mt-10 flex items-center justify-between">
+                <button
+                    type="button"
+                    onClick={() => nav({ to: "/onboarding/income" })}
+                    className="rounded-full px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent"
+                >
+                    ← Back
+                </button>
+                <button
+                    type="button"
+                    disabled={!canNext}
+                    onClick={handleNext}
+                    className="rounded-full bg-gradient-emerald px-7 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                    Continue →
+                </button>
+            </div>
         </>
-    );
-}
-
-function CashflowStepNav({ canNext, payload }: { canNext: boolean; payload: Record<string, unknown> }) {
-    const nav = useNavigate();
-
-    async function handleNext() {
-        const deviceId = localStorage.getItem("artharakshak_device_id");
-        if (deviceId) {
-            try {
-                await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/onboarding`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        device_id: deviceId,
-                        monthly_income: payload.monthlyIncome,
-                        income_frequency: payload.incomeFrequency,
-                        monthly_expenses_estimate: payload.expenses,
-                        existing_emi_total: payload.emiTotal,
-                        has_emergency_fund: payload.hasEmergencyFund,
-                        dependents_count: payload.dependents,
-                    }),
-                });
-            } catch {
-                // Non-blocking — localStorage onboarding flow continues even if backend sync fails
-            }
-        }
-        nav({ to: "/onboarding/concern" });
-    }
-
-    return (
-        <div className="mt-10 flex items-center justify-between">
-            <button
-                type="button"
-                onClick={() => nav({ to: "/onboarding/income" })}
-                className="rounded-full px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent"
-            >
-                ← Back
-            </button>
-            <button
-                type="button"
-                disabled={!canNext}
-                onClick={handleNext}
-                className="rounded-full bg-gradient-emerald px-7 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-            >
-                Continue →
-            </button>
-        </div>
     );
 }

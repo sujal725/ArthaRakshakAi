@@ -24,14 +24,27 @@ const BASE_INCOME: Record<IncomeType, number> = {
   retired: 22000,
 };
 
-export function predictCashFlow(opts: { incomeType: IncomeType | null; monthIndex: number }): CashFlowPrediction {
-  const base = opts.incomeType ? BASE_INCOME[opts.incomeType] : 40000;
+export function predictCashFlow(opts: {
+  incomeType: IncomeType | null;
+  monthIndex: number;
+  monthlyIncome?: number | null;
+  monthlyExpenses?: number | null;
+  existingEmiTotal?: number | null;
+}): CashFlowPrediction {
+  // Use real user income if provided, fall back to type-based estimate
+  const base = opts.monthlyIncome ?? (opts.incomeType ? BASE_INCOME[opts.incomeType] : 40000);
+  const userExpenses = opts.monthlyExpenses;
+  const userEmi = opts.existingEmiTotal ?? 0;
   const labels = monthLabels(opts.monthIndex);
   const months: MonthPoint[] = labels.map((label, i) => {
     const variance = [1, 1.02, 0.98, 1.05, 1.1, 0.95][i] ?? 1;
     const income = Math.round(base * variance);
     const expensesVariance = i >= 3 ? 1.18 : 1; // festive uptick
-    const expenses = Math.round(base * 0.62 * expensesVariance);
+    // If user gave us real expenses, use those (+ EMI + festive variance), else estimate
+    const baseExpenses = userExpenses != null
+      ? userExpenses + userEmi
+      : Math.round(base * 0.62);
+    const expenses = Math.round(baseExpenses * expensesVariance);
     const savings = income - expenses;
     const predicted = i >= 3;
     const risk: MonthPoint["risk"] = predicted && savings < base * 0.15 ? "high" : predicted ? "medium" : "low";

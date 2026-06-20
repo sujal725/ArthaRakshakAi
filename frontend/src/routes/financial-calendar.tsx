@@ -80,11 +80,11 @@ function FinancialCalendarGuarded() {
 /* ====================== CALENDAR TAB ====================== */
 
 const CATEGORY_STYLE: Record<CalendarCategory, { chip: string; dot: string; label: string; Icon: typeof Wallet }> = {
-  income:      { chip: "bg-primary/15 text-primary",    dot: "bg-primary",   label: "Income",     Icon: Wallet },
-  expense:     { chip: "bg-destructive/15 text-destructive", dot: "bg-destructive", label: "Expense", Icon: Receipt },
-  investment:  { chip: "bg-secondary/30 text-foreground",dot: "bg-secondary",label: "Investment", Icon: PiggyBank },
-  government:  { chip: "bg-warning/20 text-warning-foreground",dot: "bg-warning",label: "Govt",   Icon: Landmark },
-  seasonal:    { chip: "bg-violet-500/15 text-violet-600",dot: "bg-violet-500",label: "Seasonal",Icon: PartyPopper },
+  income: { chip: "bg-primary/15 text-primary", dot: "bg-primary", label: "Income", Icon: Wallet },
+  expense: { chip: "bg-destructive/15 text-destructive", dot: "bg-destructive", label: "Expense", Icon: Receipt },
+  investment: { chip: "bg-secondary/30 text-foreground", dot: "bg-secondary", label: "Investment", Icon: PiggyBank },
+  government: { chip: "bg-warning/20 text-warning-foreground", dot: "bg-warning", label: "Govt", Icon: Landmark },
+  seasonal: { chip: "bg-violet-500/15 text-violet-600", dot: "bg-violet-500", label: "Seasonal", Icon: PartyPopper },
 };
 
 function CalendarTab() {
@@ -94,9 +94,16 @@ function CalendarTab() {
   const today = new Date();
   const [cursor, setCursor] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
 
+  const { monthlyIncome } = useApp();
   const events = useMemo(
-    () => generateCalendarEvents({ monthIndex: cursor.getMonth(), year: cursor.getFullYear(), incomeType, concerns }),
-    [cursor, incomeType, concerns],
+    () => generateCalendarEvents({
+      monthIndex: cursor.getMonth(),
+      year: cursor.getFullYear(),
+      incomeType,
+      concerns,
+      monthlyIncome,
+    }),
+    [cursor, incomeType, concerns, monthlyIncome],
   );
   const insights = useMemo(
     () => generateAIInsights({ persona, incomeType, concerns, events, monthIndex: cursor.getMonth() }),
@@ -272,9 +279,8 @@ function CalendarGrid({
               <HoverCardTrigger asChild>
                 <button
                   type="button"
-                  className={`group relative flex aspect-square w-full flex-col items-stretch overflow-hidden rounded-2xl border bg-card p-1.5 text-left transition card-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                    isToday ? "border-primary ring-2 ring-primary/30" : "border-border"
-                  }`}
+                  className={`group relative flex aspect-square w-full flex-col items-stretch overflow-hidden rounded-2xl border bg-card p-1.5 text-left transition card-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isToday ? "border-primary ring-2 ring-primary/30" : "border-border"
+                    }`}
                   aria-label={`${day} ${monthLabel}, ${list.length} events`}
                 >
                   <span className={`text-[11px] font-semibold ${isToday ? "text-primary" : "text-muted-foreground"}`}>{day}</span>
@@ -332,7 +338,14 @@ function CashFlowTab() {
   const memory = useGuardianMemory();
   const persona = useMemo(() => derivePersona(incomeType), [incomeType]);
   const monthIndex = new Date().getMonth();
-  const prediction = useMemo(() => predictCashFlow({ incomeType, monthIndex }), [incomeType, monthIndex]);
+  const { monthlyIncome, monthlyExpenses, existingEmiTotal } = useApp();
+  const prediction = useMemo(() => predictCashFlow({
+    incomeType,
+    monthIndex,
+    monthlyIncome,
+    monthlyExpenses,
+    existingEmiTotal,
+  }), [incomeType, monthIndex, monthlyIncome, monthlyExpenses, existingEmiTotal]);
   const risk = useMemo(() => analyzeCashFlowRisk({ incomeType, concerns, prediction }), [incomeType, concerns, prediction]);
   const warning = useMemo(() => generateEarlyWarning({ persona, incomeType, concerns, prediction, monthIndex }), [persona, incomeType, concerns, prediction, monthIndex]);
   const personality = useMemo(() => generateFinancialPersonality({ persona, incomeType }), [persona, incomeType]);
@@ -347,8 +360,8 @@ function CashFlowTab() {
   const RiskIcon = risk.level === "low" ? ShieldCheck : risk.level === "medium" ? AlertTriangle : OctagonAlert;
   const riskChip =
     risk.level === "low" ? "bg-primary/15 text-primary"
-    : risk.level === "medium" ? "bg-warning/20 text-warning-foreground"
-    : "bg-destructive/15 text-destructive";
+      : risk.level === "medium" ? "bg-warning/20 text-warning-foreground"
+        : "bg-destructive/15 text-destructive";
   const riskLabel = risk.level === "low" ? t("cf_riskLow") : risk.level === "medium" ? t("cf_riskMedium") : t("cf_riskHigh");
 
   return (
@@ -366,10 +379,10 @@ function CashFlowTab() {
 
       {/* Summary */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard label={t("cf_income")}    value={prediction.summary.income}    Icon={TrendingUp}   tone="primary" />
-        <SummaryCard label={t("cf_expenses")}  value={prediction.summary.expenses}  Icon={TrendingDown} tone="destructive" />
-        <SummaryCard label={t("cf_savings")}   value={prediction.summary.savings}   Icon={PiggyBank}    tone="secondary" />
-        <SummaryCard label={t("cf_forecast")}  value={prediction.summary.forecast}  Icon={Sparkles}     tone="primary" hint="Predicted" />
+        <SummaryCard label={t("cf_income")} value={prediction.summary.income} Icon={TrendingUp} tone="primary" />
+        <SummaryCard label={t("cf_expenses")} value={prediction.summary.expenses} Icon={TrendingDown} tone="destructive" />
+        <SummaryCard label={t("cf_savings")} value={prediction.summary.savings} Icon={PiggyBank} tone="secondary" />
+        <SummaryCard label={t("cf_forecast")} value={prediction.summary.forecast} Icon={Sparkles} tone="primary" hint="Predicted" />
       </section>
 
       {/* Forecast graph */}
@@ -430,11 +443,11 @@ function CashFlowTab() {
             <div key={row.year} className="rounded-2xl border border-border bg-card p-4 card-lift">
               <p className="text-lg font-bold">{row.year}</p>
               <dl className="mt-3 space-y-1.5 text-sm">
-                <Row label={t("cf_t_income")} value={`₹${(row.income/1000).toFixed(0)}k`} />
-                <Row label={t("cf_t_savings")} value={`₹${(row.savings/1000).toFixed(0)}k`} />
-                <Row label={t("cf_t_expenses")} value={`₹${(row.expenses/1000).toFixed(0)}k`} />
+                <Row label={t("cf_t_income")} value={`₹${(row.income / 1000).toFixed(0)}k`} />
+                <Row label={t("cf_t_savings")} value={`₹${(row.savings / 1000).toFixed(0)}k`} />
+                <Row label={t("cf_t_expenses")} value={`₹${(row.expenses / 1000).toFixed(0)}k`} />
                 <Row label={t("cf_t_risk")} value={row.risk === "low" ? t("cf_riskLow") : row.risk === "medium" ? t("cf_riskMedium") : t("cf_riskHigh")} />
-                <Row label={t("cf_t_net")} value={`₹${(row.netWorth/100000).toFixed(1)}L`} bold />
+                <Row label={t("cf_t_net")} value={`₹${(row.netWorth / 100000).toFixed(1)}L`} bold />
               </dl>
             </div>
           ))}

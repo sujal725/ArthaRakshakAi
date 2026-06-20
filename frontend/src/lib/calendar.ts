@@ -37,15 +37,16 @@ export function generateCalendarEvents(opts: CalOpts): CalendarEvent[] {
     ev.push({ id: `${title}-${date}-${m}`, date: d(y, m, date), title, amount, category, icon });
 
   // Income — by incomeType
-  if (incomeType === "salary" || !incomeType) push(1, "Salary Credit", "income", "💰", 45000);
+  const income = opts.monthlyIncome;
+  if (incomeType === "salary" || !incomeType) push(1, "Salary Credit", "income", "💰", income ?? 45000);
   if (incomeType === "gig") {
-    push(7, "Freelance Payout", "income", "💼", 12000);
-    push(21, "Gig Earnings", "income", "💼", 9000);
+    push(7, "Freelance Payout", "income", "💼", income ? Math.round(income * 0.6) : 12000);
+    push(21, "Gig Earnings", "income", "💼", income ? Math.round(income * 0.4) : 9000);
   }
-  if (incomeType === "farmer") push(15, "Crop Sale", "income", "🌾", 28000);
-  if (incomeType === "business") push(3, "Business Income", "income", "🏪", 38000);
-  if (incomeType === "student") push(5, "Stipend", "income", "🎓", 8000);
-  if (incomeType === "retired") push(1, "Pension Credit", "income", "👴", 22000);
+  if (incomeType === "farmer") push(15, "Crop Sale", "income", "🌾", income ?? 28000);
+  if (incomeType === "business") push(3, "Business Income", "income", "🏪", income ?? 38000);
+  if (incomeType === "student") push(5, "Stipend", "income", "🎓", income ?? 8000);
+  if (incomeType === "retired") push(1, "Pension Credit", "income", "👴", income ?? 22000);
 
   // Expenses (universal)
   push(5, "Home Loan EMI", "expense", "🏠", 18500);

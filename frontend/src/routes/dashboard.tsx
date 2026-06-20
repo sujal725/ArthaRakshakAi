@@ -160,9 +160,9 @@ function ConnectedAlertsCard() {
 
 function NotificationCard({ n, onDismiss }: { n: GuardianNotification; onDismiss: (id: string) => void }) {
   const TONE = {
-    warning: { ring: "border-warning/40 bg-warning/5",          icon: AlertTriangle, color: "text-warning-foreground", label: "Warning" },
-    tip:     { ring: "border-primary/30 bg-primary/5",          icon: Lightbulb,     color: "text-primary",            label: "Tip" },
-    achievement: { ring: "border-secondary/40 bg-secondary/10", icon: Trophy,        color: "text-foreground",         label: "Achievement" },
+    warning: { ring: "border-warning/40 bg-warning/5", icon: AlertTriangle, color: "text-warning-foreground", label: "Warning" },
+    tip: { ring: "border-primary/30 bg-primary/5", icon: Lightbulb, color: "text-primary", label: "Tip" },
+    achievement: { ring: "border-secondary/40 bg-secondary/10", icon: Trophy, color: "text-foreground", label: "Achievement" },
   }[n.type];
   const Icon = TONE.icon;
   return (
@@ -271,9 +271,9 @@ function QuickActions() {
   const t = useT();
   const items = [
     { label: t("d_qa1"), help: t("d_qa1Help"), icon: MessageSquare, to: "/scam-shield" as const },
-    { label: t("d_qa2"), help: t("d_qa2Help"), icon: GitBranch,     to: "/future-self" as const },
-    { label: t("d_qa3"), help: t("d_qa3Help"), icon: CalendarDays,  to: "/financial-calendar" as const },
-    { label: t("d_qa4"), help: t("d_qa4Help"), icon: FileText,      to: "/government-schemes" as const },
+    { label: t("d_qa2"), help: t("d_qa2Help"), icon: GitBranch, to: "/future-self" as const },
+    { label: t("d_qa3"), help: t("d_qa3Help"), icon: CalendarDays, to: "/financial-calendar" as const },
+    { label: t("d_qa4"), help: t("d_qa4Help"), icon: FileText, to: "/government-schemes" as const },
     { label: "Trusted Circle", help: "Share decisions with people you trust", icon: Users, to: "/trusted-circle" as const },
   ];
   return (
@@ -297,15 +297,27 @@ function QuickActions() {
 
 function HealthScoreCard() {
   const t = useT();
-  const score = 72;
+  const { monthlyIncome, monthlyExpenses, existingEmiTotal, hasEmergencyFund } = useApp();
+
+  // Calculate real score from user data
+  const income = monthlyIncome ?? 40000;
+  const expenses = (monthlyExpenses ?? income * 0.62) + (existingEmiTotal ?? 0);
+  const savings = income - expenses;
+  const savingsPct = Math.max(0, Math.min(100, Math.round((savings / income) * 100)));
+  const emiRatio = existingEmiTotal ? Math.round((existingEmiTotal / income) * 100) : 0;
+  const cashFlowScore = Math.max(0, Math.min(100, 100 - emiRatio - (expenses > income ? 30 : 0)));
+  const emergencyScore = hasEmergencyFund ? 90 : 40;
+  const score = Math.round((savingsPct + cashFlowScore + emergencyScore) / 3);
+
   const radius = 64;
   const C = 2 * Math.PI * radius;
   const offset = C - (score / 100) * C;
   const bars = [
-    { label: t("d_savings"), value: 68, trend: "up" as const },
+    { label: t("d_savings"), value: Math.min(100, savingsPct * 3), trend: savingsPct > 15 ? "up" as const : "down" as const },
     { label: t("d_scamSafety"), value: 84, trend: "up" as const },
-    { label: t("d_cashFlow"), value: 58, trend: "down" as const },
+    { label: t("d_cashFlow"), value: cashFlowScore, trend: cashFlowScore > 60 ? "up" as const : "down" as const },
   ];
+
   return (
     <article className="rounded-3xl border border-border bg-gradient-to-br from-accent to-card p-6 lg:col-span-2">
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">{t("d_healthScore")}</div>
@@ -344,6 +356,16 @@ function HealthScoreCard() {
           ))}
         </div>
       </div>
+      {monthlyIncome && (
+        <div className="mt-4 rounded-2xl bg-accent/60 px-4 py-3 text-sm">
+          <span className="font-semibold text-primary">Monthly snapshot: </span>
+          <span className="text-foreground">
+            Income ₹{monthlyIncome.toLocaleString("en-IN")} ·
+            Expenses ₹{Math.round(expenses).toLocaleString("en-IN")} ·
+            Savings ₹{Math.max(0, Math.round(savings)).toLocaleString("en-IN")}
+          </span>
+        </div>
+      )}
     </article>
   );
 }

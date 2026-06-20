@@ -36,6 +36,7 @@ export interface AppUser {
   joinedAt: string;
 }
 
+// REPLACE WITH:
 export interface AppState {
   language: Language;
   voiceMode: boolean;
@@ -45,6 +46,13 @@ export interface AppState {
   guardianActive: boolean;
   isAuthenticated: boolean;
   user: AppUser | null;
+  // Financial profile from onboarding
+  monthlyIncome: number | null;
+  incomeFrequency: "monthly" | "weekly" | "irregular" | "seasonal" | null;
+  monthlyExpenses: number | null;
+  existingEmiTotal: number | null;
+  hasEmergencyFund: boolean | null;
+  dependentsCount: number | null;
 }
 
 interface AppContextValue extends AppState {
@@ -54,6 +62,14 @@ interface AppContextValue extends AppState {
   setIncomeType: (t: IncomeType) => void;
   setConcerns: (c: Concern[]) => void;
   setGuardianActive: (v: boolean) => void;
+  setFinancialProfile: (profile: {
+    monthlyIncome?: number | null;
+    incomeFrequency?: "monthly" | "weekly" | "irregular" | "seasonal" | null;
+    monthlyExpenses?: number | null;
+    existingEmiTotal?: number | null;
+    hasEmergencyFund?: boolean | null;
+    dependentsCount?: number | null;
+  }) => void;
   signIn: (email: string, name?: string) => void;
   signUp: (input: { name: string; email: string; language: Language }) => void;
   signOut: () => void;
@@ -64,6 +80,7 @@ interface AppContextValue extends AppState {
 }
 
 const STORAGE_KEY = "artharakshak_state_v1";
+// REPLACE WITH:
 const defaultState: AppState = {
   language: "en",
   voiceMode: false,
@@ -73,8 +90,13 @@ const defaultState: AppState = {
   guardianActive: false,
   isAuthenticated: false,
   user: null,
+  monthlyIncome: null,
+  incomeFrequency: null,
+  monthlyExpenses: null,
+  existingEmiTotal: null,
+  hasEmergencyFund: null,
+  dependentsCount: null,
 };
-
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -138,6 +160,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIncomeType: (incomeType) => setState((s) => ({ ...s, incomeType })),
     setConcerns: (concerns) => setState((s) => ({ ...s, concerns })),
     setGuardianActive: (guardianActive) => setState((s) => ({ ...s, guardianActive })),
+    setFinancialProfile: (profile) =>
+      setState((s) => ({ ...s, ...profile })),
     signIn: (email, name) =>
       setState((s) => ({
         ...s,
@@ -151,11 +175,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           joinedAt: new Date().toISOString(),
         },
       })),
-    signUp: ({ name, email, language }) =>
-      setState((s) => ({
-        ...s,
+    // REPLACE WITH:
+    signUp: ({ name, email, language }) => {
+      // Clear guardian memory for fresh onboarding
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("artharakshak_memory_v1");
+      }
+      setState((_s) => ({
+        ...defaultState,
         language,
         isAuthenticated: true,
+        incomeType: null,
+        concerns: [],
+        guardianActive: false,
         user: {
           id: cryptoId(),
           name,
@@ -164,7 +196,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           subscriptionTier: "free",
           joinedAt: new Date().toISOString(),
         },
-      })),
+      }));
+    },
+
     signOut: () =>
       setState((s) => ({ ...s, isAuthenticated: false })),
     hasCompletedOnboarding:

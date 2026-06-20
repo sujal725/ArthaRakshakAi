@@ -102,6 +102,7 @@ function monthLabel(ts: number): string {
   return new Intl.DateTimeFormat("en", { month: "short", year: "numeric" }).format(new Date(ts));
 }
 
+// REPLACE WITH:
 export function computeGuardianScore(s: {
   scamRiskScore: number;
   cashFlowRisk: "low" | "medium" | "high";
@@ -111,9 +112,13 @@ export function computeGuardianScore(s: {
   recommendedSchemes: string[];
   trustedCircle: TrustedMember[];
   voiceHistory: VoiceTurn[];
+  monthlyIncome?: number | null;
+  monthlyExpenses?: number | null;
+  existingEmiTotal?: number | null;
+  hasEmergencyFund?: boolean | null;
 }): number {
   let score = 40;
-  score += Math.round((100 - s.scamRiskScore) * 0.20);          // 0–20
+  score += Math.round((100 - s.scamRiskScore) * 0.20);          // 0–20 scam safety
   score += s.cashFlowRisk === "low" ? 12 : s.cashFlowRisk === "medium" ? 6 : 0;
   score += s.incomeType ? 4 : 0;
   score += s.topConcerns.length >= 1 ? 3 : 0;
@@ -121,6 +126,15 @@ export function computeGuardianScore(s: {
   score += Math.min(8, s.recommendedSchemes.length * 3);
   score += Math.min(8, s.trustedCircle.length * 2);
   score += Math.min(6, s.voiceHistory.length);
+  // Bonus from real financial health
+  if (s.hasEmergencyFund) score += 5;
+  if (s.monthlyIncome && s.monthlyExpenses) {
+    const savings = s.monthlyIncome - s.monthlyExpenses - (s.existingEmiTotal ?? 0);
+    const savingsPct = savings / s.monthlyIncome;
+    if (savingsPct > 0.2) score += 8;
+    else if (savingsPct > 0.1) score += 4;
+    else if (savingsPct < 0) score -= 5;
+  }
   return Math.max(0, Math.min(100, score));
 }
 
@@ -299,7 +313,7 @@ export function GuardianMemoryProvider({ children }: { children: ReactNode }) {
         const stored = JSON.parse(raw) as Partial<GuardianMemoryState>;
         setState((s) => ({ ...s, ...stored, persona: s.persona, financialTwin: stored.financialTwin ?? s.financialTwin }));
       }
-    } catch {}
+    } catch { }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -322,7 +336,7 @@ export function GuardianMemoryProvider({ children }: { children: ReactNode }) {
 
   // Persist
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { }
   }, [state]);
 
   // Twin-evolved toast (fires once per transition)
@@ -364,7 +378,14 @@ export function GuardianMemoryProvider({ children }: { children: ReactNode }) {
         }
 
         // Score + level
-        next.guardianScore = computeGuardianScore(next);
+        const storedState = (() => { try { return JSON.parse(localStorage.getItem("artharakshak_state_v1") ?? "{}"); } catch { return {}; } })();
+        next.guardianScore = computeGuardianScore({
+          ...next,
+          monthlyIncome: storedState.monthlyIncome ?? null,
+          monthlyExpenses: storedState.monthlyExpenses ?? null,
+          existingEmiTotal: storedState.existingEmiTotal ?? null,
+          hasEmergencyFund: storedState.hasEmergencyFund ?? null,
+        });
         next.guardianLevel = scoreToLevel(next.guardianScore);
 
         // Notifications + milestones
