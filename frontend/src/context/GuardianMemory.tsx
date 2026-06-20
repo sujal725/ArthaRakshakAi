@@ -392,7 +392,7 @@ export function GuardianMemoryProvider({ children }: { children: ReactNode }) {
     setFutureGoal: (goal) => apply((s) => ({ ...s, futureGoal: goal })),
     setTrustedCircle: (members) => apply((s) => ({ ...s, trustedCircle: members })),
     addVoiceTurn: (turn) =>
-      apply((s) => ({ ...s, voiceHistory: [turn, ...s.voiceHistory].slice(0, CAP_VOICE) })),
+      apply((s) => ({ ...s, voiceHistory: [...s.voiceHistory, turn].slice(-CAP_VOICE) })),
     logAction: (a) =>
       apply((s) => {
         const action: GuardianAction = { ...a, id: uid("act"), timestamp: Date.now() };

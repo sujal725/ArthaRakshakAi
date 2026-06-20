@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
-  GitBranch, Sparkles, TrendingUp, TrendingDown, Briefcase, Car, PiggyBank,
-  GraduationCap, AlertCircle, LineChart,
+  GitBranch, Sparkles, Briefcase, Car, PiggyBank,
+  GraduationCap, AlertCircle, LineChart, TrendingUp, TrendingDown,
 } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -12,14 +12,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/i18n/translations";
 import {
-  simulateLoanNow, simulateDelayedSIP, formatINR, buildAdviceLine,
-  type SimInputs, type Scenario, type SimResult,
+  simulateLoanVsSip, simulateInvestmentGrowth,
+  buildLoanVsSipExplanation, buildLoanVsSipVerdict, buildInvestmentExplanation,
+  isLoanScenario, formatINRExact,
+  type Scenario, type LoanVsSipResult, type InvestmentGrowthResult,
 } from "@/lib/futureSelf";
 import { useGuardianMemory } from "@/context/GuardianMemory";
 import { TwinHint } from "@/components/TwinHint";
+import { LoanVsSipChart } from "@/components/LoanVsSipChart";
+import { InvestmentGrowthChart } from "@/components/InvestmentGrowthChart";
 import futureHero from "@/assets/future-self-hero.png";
-import futureCompare from "@/assets/future-comparison.png";
-import { toast } from "sonner";
 
 export const Route = createFileRoute("/future-self")({
   head: () => ({
@@ -48,31 +50,113 @@ const SCENARIOS: { value: Scenario; icon: typeof Briefcase; key: string }[] = [
   { value: "mutual_fund", icon: LineChart, key: "scn_mutual_fund" },
 ];
 
+async function fetchAiAdvice(payload: Record<string, unknown>): Promise<string> {
+  const deviceId = localStorage.getItem("artharakshak_device_id") ?? "";
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/future-self/advice`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_id: deviceId, ...payload }),
+  });
+  if (!res.ok) throw new Error("Advice request failed");
+  const data = await res.json();
+  return data.advice as string;
+}
+
 function FutureSelfPage() {
   const t = useT();
   const memory = useGuardianMemory();
   const [scenario, setScenario] = useState<Scenario>("personal_loan");
-  const [amount, setAmount] = useState(200000);
-  const [rate, setRate] = useState(14);
+
+  // Loan-scenario inputs
+  const [loanAmount, setLoanAmount] = useState(500000);
+  const [interestRate, setInterestRate] = useState(14);
+  const [tenure, setTenure] = useState(50);
   const [income, setIncome] = useState(45000);
-  const [tenure, setTenure] = useState(36);
-  const [savings, setSavings] = useState(5000);
+
+  // Investment-scenario inputs
+  const [monthlyAmount, setMonthlyAmount] = useState(5000);
+  const [expectedReturn, setExpectedReturn] = useState(12);
+  const [investTenure, setInvestTenure] = useState(60);
+
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<{ now: SimResult; delay: SimResult } | null>(null);
+  const [loanResult, setLoanResult] = useState<LoanVsSipResult | null>(null);
+  const [investResult, setInvestResult] = useState<InvestmentGrowthResult | null>(null);
+  const [advice, setAdvice] = useState<string | null>(null);
+  const [adviceLoading, setAdviceLoading] = useState(false);
+
+  const loanScenario = isLoanScenario(scenario);
+
+  function pickScenario(s: Scenario) {
+    setScenario(s);
+    setLoanResult(null);
+    setInvestResult(null);
+    setAdvice(null);
+  }
 
   async function compare() {
-    setLoading(true); setResults(null);
-    await new Promise((r) => setTimeout(r, 1400));
-    const inputs: SimInputs = { amount, rate, income, tenure, savings, scenario };
-    const out = { now: simulateLoanNow(inputs), delay: simulateDelayedSIP(inputs) };
-    setResults(out);
-    memory.setFutureGoal("Delay loan + Start SIP");
-    memory.logAction({
-      module: "future",
-      action: `Compared ${scenario.replace("_", " ")} — delaying saves more`,
-      riskImpact: -15,
-    });
-    setLoading(false);
+    setLoading(true);
+    setLoanResult(null);
+    setInvestResult(null);
+    setAdvice(null);
+    await new Promise((r) => setTimeout(r, 500));
+
+    if (loanScenario) {
+      const result = simulateLoanVsSip({ loanAmount, annualRate: interestRate, tenureMonths: tenure, sipAnnualReturn: 12 });
+      setLoanResult(result);
+      memory.setFutureGoal("Delay loan + Start SIP");
+      memory.logAction({
+        module: "future",
+        action: `Compared ${scenario.replace("_", " ")} — ₹${result.totalInterest} interest vs ₹${result.sipGrowthEarned} SIP growth`,
+        riskImpact: result.sipFinalValue >= result.totalRepaid ? -15 : 5,
+      });
+      setLoading(false);
+      setAdviceLoading(true);
+      try {
+        const text = await fetchAiAdvice({
+          scenario,
+          loan_amount: loanAmount,
+          interest_rate: interestRate,
+          tenure_months: tenure,
+          monthly_income: income,
+          emi: result.emi,
+          total_interest: result.totalInterest,
+          total_repaid: result.totalRepaid,
+          sip_final_value: result.sipFinalValue,
+          sip_growth_earned: result.sipGrowthEarned,
+        });
+        setAdvice(text);
+      } catch {
+        setAdvice(buildLoanVsSipVerdict(result));
+      }
+      setAdviceLoading(false);
+    } else {
+      const result = simulateInvestmentGrowth({ monthlyAmount, annualReturn: expectedReturn, tenureMonths: investTenure });
+      setInvestResult(result);
+      memory.setFutureGoal(`Start ${scenario === "sip" ? "SIP" : "Mutual Fund"} investing`);
+      memory.logAction({
+        module: "future",
+        action: `Projected ${scenario.replace("_", " ")} — ₹${result.growthEarned} growth over ${investTenure} months`,
+        riskImpact: -10,
+      });
+      setLoading(false);
+      setAdviceLoading(true);
+      try {
+        const text = await fetchAiAdvice({
+          scenario,
+          monthly_amount: monthlyAmount,
+          expected_return: expectedReturn,
+          tenure_months: investTenure,
+          monthly_income: income,
+          final_value: result.finalValue,
+          total_invested: result.totalInvested,
+          growth_earned: result.growthEarned,
+        });
+        setAdvice(text);
+      } catch {
+        setAdvice(`Investing ${formatINRExact(monthlyAmount)} monthly for ${investTenure} months could grow to ${formatINRExact(result.finalValue)}.`);
+      }
+      setAdviceLoading(false);
+    }
   }
 
   return (
@@ -99,8 +183,12 @@ function FutureSelfPage() {
             {SCENARIOS.map(({ value, icon: Icon, key }) => {
               const selected = scenario === value;
               return (
-                <button key={value} type="button" onClick={() => setScenario(value)}
-                  className={`card-lift flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition ${selected ? "border-primary bg-accent" : "border-border bg-card"}`}>
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => pickScenario(value)}
+                  className={`card-lift flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition ${selected ? "border-primary bg-accent" : "border-border bg-card"}`}
+                >
                   <span className="grid size-10 place-items-center rounded-xl bg-accent text-primary">
                     <Icon className="size-5" />
                   </span>
@@ -113,13 +201,20 @@ function FutureSelfPage() {
 
         {/* Inputs */}
         <section className="mt-6 rounded-3xl border border-border bg-card p-6">
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            <NumberField id="amount" label={t("fs_loanAmount")} prefix="₹" value={amount} onChange={setAmount} step={5000} />
-            <NumberField id="rate" label={t("fs_interestRate")} suffix="%" value={rate} onChange={setRate} step={0.5} />
-            <NumberField id="income" label={t("fs_monthlyIncome")} prefix="₹" value={income} onChange={setIncome} step={1000} />
-            <NumberField id="tenure" label={t("fs_tenure")} value={tenure} onChange={setTenure} step={6} />
-            <NumberField id="savings" label={t("fs_monthlySavings")} prefix="₹" value={savings} onChange={setSavings} step={500} />
-          </div>
+          {loanScenario ? (
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              <NumberField id="loanAmount" label={t("fs_loanAmount")} prefix="₹" value={loanAmount} onChange={setLoanAmount} step={5000} />
+              <NumberField id="rate" label={t("fs_interestRate")} suffix="%" value={interestRate} onChange={setInterestRate} step={0.5} />
+              <NumberField id="tenure" label={t("fs_tenure")} value={tenure} onChange={setTenure} step={1} />
+              <NumberField id="income" label={t("fs_monthlyIncome")} prefix="₹" value={income} onChange={setIncome} step={1000} />
+            </div>
+          ) : (
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <NumberField id="monthlyAmount" label="Monthly investment amount" prefix="₹" value={monthlyAmount} onChange={setMonthlyAmount} step={500} />
+              <NumberField id="expectedReturn" label="Expected annual return" suffix="%" value={expectedReturn} onChange={setExpectedReturn} step={0.5} />
+              <NumberField id="investTenure" label={t("fs_tenure")} value={investTenure} onChange={setInvestTenure} step={1} />
+            </div>
+          )}
           <div className="mt-6 flex justify-end">
             <Button onClick={compare} disabled={loading} size="lg" className="rounded-full bg-gradient-emerald px-8">
               {loading ? t("fs_computing") : t("fs_compare")}
@@ -127,42 +222,12 @@ function FutureSelfPage() {
           </div>
         </section>
 
-        {results && (
-          <>
-            <section className="mt-8 grid gap-6 lg:grid-cols-2">
-              <ComparisonCard tone="danger" result={results.now} t={t} />
-              <ComparisonCard tone="success" result={results.delay} t={t} />
-            </section>
+        {loanScenario && loanResult && (
+          <LoanVsSipResultPanel result={loanResult} advice={advice} adviceLoading={adviceLoading} />
+        )}
 
-            <section className="mt-8 rounded-3xl border border-border bg-card p-6">
-              <div className="mb-4 flex items-center gap-4">
-                <img src={futureCompare} alt="" width={180} height={120} loading="lazy" className="hidden h-16 w-auto sm:block" />
-                <h2 className="text-xl font-semibold">{t("fs_timeline")}</h2>
-              </div>
-              <Timeline now={results.now} delay={results.delay} t={t} />
-            </section>
-
-            <section className="mt-8 rounded-3xl bg-gradient-emerald p-7 text-primary-foreground shadow-xl shadow-primary/25">
-              <div className="flex items-start gap-4">
-                <span className="grid size-12 place-items-center rounded-2xl bg-white/15">
-                  <Sparkles className="size-6" />
-                </span>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{t("fs_advice")}</p>
-                  <p className="mt-2 text-lg font-semibold leading-relaxed">
-                    {buildAdviceLine(results.now, results.delay, savings, tenure)}
-                  </p>
-                  <Button
-                    variant="secondary"
-                    className="mt-5 rounded-full bg-white text-primary hover:bg-white/90"
-                    onClick={() => toast.success(t("fs_save"), { description: t("fs_savedToast") })}
-                  >
-                    {t("fs_save")}
-                  </Button>
-                </div>
-              </div>
-            </section>
-          </>
+        {!loanScenario && investResult && (
+          <InvestmentResultPanel result={investResult} advice={advice} adviceLoading={adviceLoading} />
         )}
       </main>
       <Footer />
@@ -190,96 +255,110 @@ function NumberField({ id, label, value, onChange, step = 1, prefix, suffix }: {
   );
 }
 
-function ComparisonCard({ tone, result, t }: { tone: "danger" | "success"; result: SimResult; t: (k: string) => string }) {
-  const isDanger = tone === "danger";
-  const Trend = isDanger ? TrendingDown : TrendingUp;
-  return (
-    <article className={`rounded-3xl border-2 p-6 ${isDanger ? "border-destructive/30 bg-destructive/5" : "border-primary/30 bg-primary/5"}`}>
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className={`text-xl font-bold ${isDanger ? "text-destructive" : "text-primary"}`}>{result.label}</h3>
-        <Trend className={`size-6 ${isDanger ? "text-destructive" : "text-primary"}`} />
-      </div>
-      <p className="text-xs text-muted-foreground">{t("fs_savingsAt5y")}</p>
-      <p className="text-4xl font-bold">{formatINR(result.savingsAt5y)}</p>
-      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-        <Chip label={t("fs_stress")} value={result.stress.toUpperCase()} tone={result.stress} />
-        <Chip label={t("fs_risk")} value={result.risk.toUpperCase()} tone={result.risk} />
-      </div>
-      <MiniChart series={result.series} tone={tone} />
-    </article>
-  );
-}
-
-function Chip({ label, value, tone }: { label: string; value: string; tone: "low" | "medium" | "high" }) {
-  const cls = tone === "high" ? "bg-destructive/15 text-destructive"
-    : tone === "medium" ? "bg-warning/20 text-warning-foreground"
-    : "bg-primary/15 text-primary";
-  return (
-    <div className="rounded-xl border border-border bg-card p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-bold ${cls}`}>{value}</p>
-    </div>
-  );
-}
-
-function MiniChart({ series, tone }: { series: SimResult["series"]; tone: "danger" | "success" }) {
-  const W = 280, H = 80;
-  const key = tone === "danger" ? "debt" : "savings";
-  const max = Math.max(...series.map((s) => s[key])) || 1;
-  const points = series.map((s, i) => {
-    const x = (i / (series.length - 1)) * W;
-    const y = H - (s[key] / max) * (H - 10);
-    return `${x},${y}`;
-  }).join(" ");
-  const color = tone === "danger" ? "var(--color-destructive)" : "var(--color-primary)";
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="mt-5 h-20 w-full" aria-hidden>
-      <polyline points={points} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      {series.map((s, i) => {
-        const x = (i / (series.length - 1)) * W;
-        const y = H - (s[key] / max) * (H - 10);
-        return <circle key={i} cx={x} cy={y} r="3.5" fill={color} />;
-      })}
-    </svg>
-  );
-}
-
-function Timeline({ now, delay, t }: { now: SimResult; delay: SimResult; t: (k: string) => string }) {
-  const rows = [
-    { key: "fs_netWorth", get: (s: SimResult["series"][number]) => formatINR(s.net) },
-    { key: "fs_debt", get: (s: SimResult["series"][number]) => formatINR(s.debt) },
-    { key: "fs_savingsRow", get: (s: SimResult["series"][number]) => formatINR(s.savings) },
-    { key: "fs_stressScore", get: (s: SimResult["series"][number]) => `${Math.round(s.stress)}` },
-  ];
-  const years = now.series.map((s) => s.year);
+function LoanVsSipResultPanel({ result, advice, adviceLoading }: { result: LoanVsSipResult; advice: string | null; adviceLoading: boolean }) {
+  const explanation = buildLoanVsSipExplanation(result);
+  const verdict = buildLoanVsSipVerdict(result);
+  const sipBetter = result.sipFinalValue >= result.totalRepaid;
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] text-sm">
-        <thead>
-          <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <th className="py-2 pr-3">Metric</th>
-            {years.map((y) => <th key={y} className="px-3 py-2 text-center">{y}</th>)}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {rows.map((r) => (
-            <tr key={r.key}>
-              <td className="py-3 pr-3 font-semibold">{t(r.key)}</td>
-              {now.series.map((s, i) => (
-                <td key={i} className="px-3 py-3 text-center">
-                  <div className="text-destructive">{r.get(s)}</div>
-                  <div className="text-xs text-primary">{r.get(delay.series[i])}</div>
-                </td>
-              ))}
-            </tr>
+    <>
+      <section className="mt-8 grid gap-6 sm:grid-cols-2">
+        <article className="rounded-3xl border-2 border-destructive/30 bg-destructive/5 p-6">
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-sm font-semibold text-muted-foreground">Take Loan</p>
+            <TrendingDown className="size-5 text-destructive" />
+          </div>
+          <p className="text-2xl font-bold text-destructive">{formatINRExact(result.emi)}/mo</p>
+          <p className="mt-1 text-xs text-muted-foreground">Total interest: {formatINRExact(result.totalInterest)}</p>
+        </article>
+        <article className="rounded-3xl border-2 border-primary/30 bg-primary/5 p-6">
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-sm font-semibold text-muted-foreground">Save + SIP Instead</p>
+            <TrendingUp className="size-5 text-primary" />
+          </div>
+          <p className="text-2xl font-bold text-primary">{formatINRExact(result.sipFinalValue)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Growth earned: {formatINRExact(result.sipGrowthEarned)}</p>
+        </article>
+      </section>
+
+      <section className="mt-6 rounded-3xl border border-border bg-card p-6">
+        <p className="mb-4 text-sm font-semibold text-muted-foreground">
+          Cumulative interest paid (loan) vs. value grown (SIP), month by month
+        </p>
+        <LoanVsSipChart series={result.series} />
+        <div className="mt-3 flex items-center justify-center gap-6 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-destructive" /> Loan: interest paid</span>
+          <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-primary" /> SIP: value grown</span>
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-3xl border border-border bg-card p-6">
+        <p className="mb-3 text-sm font-semibold">What this means for you</p>
+        <ul className="space-y-2 text-sm text-muted-foreground">
+          {explanation.map((line, i) => (
+            <li key={i} className="flex gap-2"><span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" /> {line}</li>
           ))}
-        </tbody>
-      </table>
-      <div className="mt-2 flex items-center justify-end gap-4 text-xs">
-        <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-destructive" /> {now.label}</span>
-        <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-primary" /> {delay.label}</span>
+        </ul>
+        <div className={`mt-4 rounded-2xl p-4 text-sm font-medium ${sipBetter ? "bg-primary/10 text-primary" : "bg-warning/15 text-warning-foreground"}`}>
+          {verdict}
+        </div>
+      </section>
+
+      <AiAdvicePanel advice={advice} loading={adviceLoading} />
+    </>
+  );
+}
+
+function InvestmentResultPanel({ result, advice, adviceLoading }: { result: InvestmentGrowthResult; advice: string | null; adviceLoading: boolean }) {
+  const explanation = buildInvestmentExplanation(result);
+  return (
+    <>
+      <section className="mt-8 grid gap-6 sm:grid-cols-2">
+        <article className="rounded-3xl border-2 border-primary/30 bg-primary/5 p-6">
+          <p className="text-sm font-semibold text-muted-foreground">Final value</p>
+          <p className="text-2xl font-bold text-primary">{formatINRExact(result.finalValue)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Total invested: {formatINRExact(result.totalInvested)}</p>
+        </article>
+        <article className="rounded-3xl border-2 border-secondary/40 bg-secondary/10 p-6">
+          <p className="text-sm font-semibold text-muted-foreground">Growth earned</p>
+          <p className="text-2xl font-bold text-foreground">{formatINRExact(result.growthEarned)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Over {result.tenureMonths} months at {result.annualReturn}% p.a.</p>
+        </article>
+      </section>
+
+      <section className="mt-6 rounded-3xl border border-border bg-card p-6">
+        <p className="mb-4 text-sm font-semibold text-muted-foreground">Investment value, month by month</p>
+        <InvestmentGrowthChart series={result.series} />
+      </section>
+
+      <section className="mt-6 rounded-3xl border border-border bg-card p-6">
+        <p className="mb-3 text-sm font-semibold">What this means for you</p>
+        <ul className="space-y-2 text-sm text-muted-foreground">
+          {explanation.map((line, i) => (
+            <li key={i} className="flex gap-2"><span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" /> {line}</li>
+          ))}
+        </ul>
+      </section>
+
+      <AiAdvicePanel advice={advice} loading={adviceLoading} />
+    </>
+  );
+}
+
+function AiAdvicePanel({ advice, loading }: { advice: string | null; loading: boolean }) {
+  return (
+    <section className="mt-6 rounded-3xl bg-gradient-emerald p-7 text-primary-foreground shadow-xl shadow-primary/25">
+      <div className="flex items-start gap-4">
+        <span className="grid size-12 place-items-center rounded-2xl bg-white/15">
+          <Sparkles className="size-6" />
+        </span>
+        <div className="flex-1">
+          <p className="text-xs font-semibold uppercase tracking-wide opacity-80">AI Advice</p>
+          <p className="mt-2 text-lg font-semibold leading-relaxed">
+            {loading ? "Your Guardian is thinking through the numbers…" : advice ?? "—"}
+          </p>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

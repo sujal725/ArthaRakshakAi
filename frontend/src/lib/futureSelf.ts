@@ -1,4 +1,4 @@
-// Future Self — deterministic projection formulas. Pure functions.
+// Future Self — accurate financial projections. Pure functions.
 
 export type Scenario =
   | "personal_loan"
@@ -8,133 +8,170 @@ export type Scenario =
   | "emergency_loan"
   | "mutual_fund";
 
-export interface SimInputs {
-  amount: number;    // ₹ principal
-  rate: number;      // % annual
-  income: number;    // ₹ monthly
-  tenure: number;    // months
-  savings: number;   // ₹ monthly savings
-  scenario: Scenario;
+export const LOAN_SCENARIOS: Scenario[] = ["personal_loan", "vehicle", "education_loan", "emergency_loan"];
+export const INVESTMENT_SCENARIOS: Scenario[] = ["sip", "mutual_fund"];
+
+export function isLoanScenario(s: Scenario): boolean {
+  return LOAN_SCENARIOS.includes(s);
 }
 
-export interface YearPoint {
-  year: number;
-  net: number;
-  debt: number;
-  savings: number;
-  stress: number; // 0-100
-}
+/* ---------------- Core math ---------------- */
 
-export interface SimResult {
-  label: string;
-  savingsAt5y: number;
-  stress: "low" | "medium" | "high";
-  risk: "low" | "medium" | "high";
-  emi: number;
-  series: YearPoint[];
-}
-
-const YEARS = [2026, 2028, 2030, 2035];
-
-function emi(principal: number, annualRate: number, months: number): number {
+export function emi(principal: number, annualRate: number, months: number): number {
   if (principal <= 0 || months <= 0) return 0;
   const r = annualRate / 12 / 100;
   if (r === 0) return principal / months;
   return (principal * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
 }
 
-function fvSeries(monthly: number, annualReturn: number, months: number): number {
-  const r = annualReturn / 12 / 100;
-  if (r === 0) return monthly * months;
-  return monthly * ((Math.pow(1 + r, months) - 1) / r);
+/* ---------------- Loan vs SIP (the core comparison) ---------------- */
+
+export interface MonthlySeriesPoint {
+  month: number;
+  loanInterestPaid: number; // cumulative interest paid on the loan up to this month
+  sipValueGrown: number;    // cumulative value if investing the EMI amount instead
 }
 
-function classifyLevel(value: number, lowMax: number, mediumMax: number): "low" | "medium" | "high" {
-  if (value <= lowMax) return "low";
-  if (value <= mediumMax) return "medium";
-  return "high";
+export interface LoanVsSipResult {
+  loanAmount: number;
+  tenureMonths: number;
+  annualRate: number;
+  sipAnnualReturn: number;
+  emi: number;
+  totalInterest: number;
+  totalRepaid: number;
+  sipFinalValue: number;
+  sipGrowthEarned: number;
+  series: MonthlySeriesPoint[];
 }
 
-function amortizedRemainingBalance(principal: number, annualRate: number, totalMonths: number, monthsElapsed: number): number {
-  if (totalMonths <= 0) return 0;
-  const r = annualRate / 12 / 100;
-  const e = emi(principal, annualRate, totalMonths);
-  const months = Math.min(monthsElapsed, totalMonths);
-  let balance = principal;
-  for (let m = 0; m < months; m++) {
-    const interestPortion = balance * r;
-    const principalPortion = e - interestPortion;
+export function simulateLoanVsSip(opts: {
+  loanAmount: number;
+  annualRate: number;
+  tenureMonths: number;
+  sipAnnualReturn?: number;
+}): LoanVsSipResult {
+  const { loanAmount, annualRate, tenureMonths, sipAnnualReturn = 12 } = opts;
+  const monthlyEmi = emi(loanAmount, annualRate, tenureMonths);
+  const loanMonthlyRate = annualRate / 12 / 100;
+  const sipMonthlyRate = sipAnnualReturn / 12 / 100;
+
+  let balance = loanAmount;
+  let cumulativeInterest = 0;
+  let sipValue = 0;
+  const series: MonthlySeriesPoint[] = [];
+
+  for (let m = 1; m <= tenureMonths; m++) {
+    // Real reducing-balance amortization
+    const interestPortion = balance * loanMonthlyRate;
+    const principalPortion = Math.min(balance, monthlyEmi - interestPortion);
     balance = Math.max(0, balance - principalPortion);
+    cumulativeInterest += interestPortion;
+
+    // If you invested the EMI amount instead of paying it to the loan
+    sipValue = sipValue * (1 + sipMonthlyRate) + monthlyEmi;
+
+    series.push({
+      month: m,
+      loanInterestPaid: Math.round(cumulativeInterest),
+      sipValueGrown: Math.round(sipValue),
+    });
   }
-  return balance;
-}
 
-export function simulateLoanNow(i: SimInputs): SimResult {
-  const e = emi(i.amount, i.rate, i.tenure);
-  const emiToIncomeRatio = i.income > 0 ? e / i.income : 1;
-
-  const series: YearPoint[] = YEARS.map((y, idx) => {
-    const months = (idx + 1) * 24;
-    const debt = amortizedRemainingBalance(i.amount, i.rate, i.tenure, months);
-    const net = Math.max(0, fvSeries(Math.max(0, i.savings - e * 0.5), 6, months) - debt * 0.2);
-    const savings = Math.max(0, (i.savings - e * 0.4) * months);
-    const stress = Math.min(95, 40 + emiToIncomeRatio * 80);
-    return { year: y, net, debt, savings, stress };
-  });
-
-  const lastStress = series[series.length - 1]?.stress ?? 0;
+  const totalInterest = Math.round(cumulativeInterest);
+  const totalRepaid = Math.round(loanAmount + totalInterest);
+  const sipFinalValue = series.length ? series[series.length - 1].sipValueGrown : 0;
+  const sipGrowthEarned = Math.round(sipFinalValue - monthlyEmi * tenureMonths);
 
   return {
-    label: "Take Loan Now",
-    savingsAt5y: Math.round(series[1]?.savings ?? 0),
-    stress: classifyLevel(lastStress, 40, 65),
-    risk: classifyLevel(emiToIncomeRatio * 100, 30, 50),
-    emi: Math.round(e),
+    loanAmount,
+    tenureMonths,
+    annualRate,
+    sipAnnualReturn,
+    emi: Math.round(monthlyEmi * 100) / 100,
+    totalInterest,
+    totalRepaid,
+    sipFinalValue,
+    sipGrowthEarned,
     series,
   };
 }
 
-export function simulateDelayedSIP(i: SimInputs): SimResult {
-  const sip = Math.max(2000, i.savings || 5000);
-  const sipToIncomeRatio = i.income > 0 ? sip / i.income : 0;
+export function buildLoanVsSipExplanation(r: LoanVsSipResult): string[] {
+  return [
+    `If you take the loan, you will pay back a total of ${formatINRExact(r.totalRepaid)}, which is more than the loan amount of ${formatINRExact(r.loanAmount)}.`,
+    `If you save and invest instead, you will have a final amount of ${formatINRExact(r.sipFinalValue)} after ${r.tenureMonths} months, which is ${r.sipFinalValue >= r.totalRepaid ? "more" : "less"} than the total amount you would have paid back with the loan.`,
+    `By saving and investing, you will earn a total growth of ${formatINRExact(r.sipGrowthEarned)}, which is ${r.sipGrowthEarned >= r.totalInterest ? "more" : "less"} than the interest you would have paid with the loan.`,
+  ];
+}
 
-  const series: YearPoint[] = YEARS.map((y, idx) => {
-    const months = (idx + 1) * 24;
-    const corpus = fvSeries(sip, 12, months);
-    const stress = Math.max(5, Math.min(60, 10 + sipToIncomeRatio * 50 - idx * 3));
-    return { year: y, net: Math.round(corpus * 0.9), debt: 0, savings: Math.round(corpus), stress };
-  });
+export function buildLoanVsSipVerdict(r: LoanVsSipResult): string {
+  const better = r.sipFinalValue >= r.totalRepaid;
+  return better
+    ? `It seems better for you to save and invest instead of taking the loan, because you will end up with more money after ${r.tenureMonths} months and earn growth instead of paying interest.`
+    : `Taking the loan may be reasonable here — delaying it and investing instead would not outgrow the total repayment in this case. Compare the EMI against your monthly income before deciding.`;
+}
 
-  const lastStress = series[series.length - 1]?.stress ?? 0;
-  const shortHorizonRisk = i.tenure < 12;
+/* ---------------- Investment-only growth (SIP / Mutual Fund scenarios) ---------------- */
 
+export interface InvestmentSeriesPoint {
+  month: number;
+  value: number;
+}
+
+export interface InvestmentGrowthResult {
+  monthlyAmount: number;
+  annualReturn: number;
+  tenureMonths: number;
+  finalValue: number;
+  totalInvested: number;
+  growthEarned: number;
+  series: InvestmentSeriesPoint[];
+}
+
+export function simulateInvestmentGrowth(opts: {
+  monthlyAmount: number;
+  annualReturn: number;
+  tenureMonths: number;
+}): InvestmentGrowthResult {
+  const { monthlyAmount, annualReturn, tenureMonths } = opts;
+  const r = annualReturn / 12 / 100;
+  let value = 0;
+  const series: InvestmentSeriesPoint[] = [];
+  for (let m = 1; m <= tenureMonths; m++) {
+    value = value * (1 + r) + monthlyAmount;
+    series.push({ month: m, value: Math.round(value) });
+  }
+  const totalInvested = monthlyAmount * tenureMonths;
   return {
-    label: "Delay Loan + Start SIP",
-    savingsAt5y: Math.round(series[1]?.savings ?? 0),
-    stress: classifyLevel(lastStress, 25, 45),
-    risk: shortHorizonRisk ? "medium" : "low",
-    emi: 0,
+    monthlyAmount,
+    annualReturn,
+    tenureMonths,
+    finalValue: Math.round(value),
+    totalInvested,
+    growthEarned: Math.round(value - totalInvested),
     series,
   };
 }
 
-export function buildAdviceLine(now: SimResult, delay: SimResult, monthlySavings: number, tenureMonths: number): string {
-  const nowAmount = Math.max(now.savingsAt5y, 1);
-  const delayAmount = delay.savingsAt5y;
-  const multiplier = delayAmount / nowAmount;
-  const multiplierLabel = multiplier >= 1.05
-    ? `${multiplier.toFixed(1)}× better`
-    : multiplier <= 0.95
-      ? `${(1 / multiplier).toFixed(1)}× worse`
-      : "a similar";
-  const years = Math.max(1, Math.round(tenureMonths / 12));
-
-  return `Based on your numbers, waiting and investing ₹${monthlySavings.toLocaleString("en-IN")}/month instead of taking this loan creates ${multiplierLabel} financial outcome over the next ${years > 1 ? `${years} years` : "year"}.`;
+export function buildInvestmentExplanation(r: InvestmentGrowthResult): string[] {
+  return [
+    `Investing ${formatINRExact(r.monthlyAmount)} every month for ${r.tenureMonths} months grows to a final value of ${formatINRExact(r.finalValue)}.`,
+    `You would have invested a total of ${formatINRExact(r.totalInvested)} from your own pocket.`,
+    `The remaining ${formatINRExact(r.growthEarned)} is pure growth earned from compounding at an assumed ${r.annualReturn}% annual return.`,
+  ];
 }
+
+/* ---------------- Formatting ---------------- */
 
 export function formatINR(n: number): string {
   if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`;
   if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
   if (n >= 1000) return `₹${Math.round(n / 1000)}K`;
   return `₹${Math.round(n)}`;
+}
+
+export function formatINRExact(n: number): string {
+  const rounded = Math.round(n * 100) / 100;
+  return `₹${rounded.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }

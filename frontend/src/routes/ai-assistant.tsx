@@ -42,12 +42,12 @@ interface ChatMessage {
 
 const QUICK_LANGUAGES = LANGUAGES.filter((l) => ["en", "hi", "mr", "kn"].includes(l.code));
 
-async function callAssistantAPI(text: string, language: string) {
+async function callAssistantAPI(text: string, language: string, voice: boolean) {
   const deviceId = localStorage.getItem("artharakshak_device_id") ?? "";
   const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/voice/reply`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ device_id: deviceId, text, language }),
+    body: JSON.stringify({ device_id: deviceId, text, language, voice }),
   });
   if (!res.ok) throw new Error("Assistant request failed");
   return res.json();
@@ -70,14 +70,18 @@ function AssistantPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, thinking]);
 
-  async function reply(text: string) {
+  async function reply(text: string, opts: { voice?: boolean } = {}) {
+    const isVoice = !!opts.voice;
     setMessages((m) => [...m, { id: uid(), role: "user", content: text, ts: Date.now() }]);
     setThinking(true);
     try {
-      const result = await callAssistantAPI(text, language);
+      const result = await callAssistantAPI(text, language, isVoice);
       const answer = result.reply ?? "Sorry, I couldn't understand that. Please try again.";
       setMessages((m) => [...m, { id: uid(), role: "assistant", content: answer, ts: Date.now() }]);
-      announce(answer, language);
+      // Only speak the answer if the question itself was asked by voice.
+      if (isVoice) {
+        announce(result.speak_text ?? answer, language);
+      }
     } catch (error) {
       console.error(error);
       setMessages((m) => [...m, {
@@ -95,7 +99,7 @@ function AssistantPage() {
     if (!trimmed) return;
     setInput("");
     stopAnnounce();
-    reply(trimmed);
+    reply(trimmed, { voice: false });
   }
 
   async function startVoice() {
@@ -105,7 +109,7 @@ function AssistantPage() {
     try {
       const txt = await transcribeAudio(language);
       setListening(false);
-      reply(txt);
+      reply(txt, { voice: true });
     } catch (error) {
       setListening(false);
       setVoiceError(error instanceof Error ? error.message : "Could not hear that. Please try again or type instead.");

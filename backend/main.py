@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from db import Base, engine
-from routes import memory, scam, voice
+from routes import memory, scam, voice, future_self
 
 Base.metadata.create_all(bind=engine)
 
@@ -18,6 +18,7 @@ app.add_middleware(
 app.include_router(memory.router, prefix="/api")
 app.include_router(scam.router, prefix="/api")
 app.include_router(voice.router, prefix="/api")
+app.include_router(future_self.router, prefix="/api")
 
 @app.get("/")
 def root():

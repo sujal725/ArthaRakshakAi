@@ -56,3 +56,27 @@ class VoiceReplyResponse(BaseModel):
     speak_text: str
     suggested_route: Optional[str] = None
     action: Optional[str] = None
+
+class VoiceTextRequest(BaseModel):
+    device_id: str
+    text: str
+    language: Optional[str] = "en"
+    voice: Optional[bool] = False   # NEW — true when the question was asked by speaking
+
+class FutureSelfAdviceRequest(BaseModel):
+    device_id: str
+    scenario: str
+    loan_amount: Optional[float] = None
+    interest_rate: Optional[float] = None
+    tenure_months: Optional[int] = None
+    monthly_income: Optional[float] = None
+    emi: Optional[float] = None
+    total_interest: Optional[float] = None
+    total_repaid: Optional[float] = None
+    sip_final_value: Optional[float] = None
+    sip_growth_earned: Optional[float] = None
+    monthly_amount: Optional[float] = None
+    expected_return: Optional[float] = None
+    final_value: Optional[float] = None
+    total_invested: Optional[float] = None
+    growth_earned: Optional[float] = None

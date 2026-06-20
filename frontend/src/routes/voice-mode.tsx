@@ -11,6 +11,7 @@ import { useApp } from "@/context/AppContext";
 import { useGuardianMemory } from "@/context/GuardianMemory";
 
 import { transcribeAudio } from "@/lib/voice";
+import { announce, stopAnnounce } from "@/lib/a11y";
 import voiceHero from "@/assets/voice-mode-hero.png";
 import guardianHead from "@/assets/guardian-headset.png";
 
@@ -55,13 +56,14 @@ function VoicePage() {
     const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/voice/reply`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ device_id: deviceId, text, language }),
+      body: JSON.stringify({ device_id: deviceId, text, language, voice: true }), // NEW: voice: true
     });
     return res.json();
   }
 
   async function handleSpeak(prefill?: string) {
     if (phase !== "idle") return;
+    stopAnnounce();               // NEW — cancel any speech still playing
     setCurrentReply(null);
     setPhase("listening");
     let text: string;
@@ -78,6 +80,7 @@ function VoicePage() {
     const replyData = { reply: apiResult.reply, suggestedRoute: apiResult.suggested_route };
     setCurrentReply(replyData);
     setPhase("speaking");
+    announce(apiResult.speak_text ?? apiResult.reply, language);   // NEW — actually speak it
     const now = Date.now();
     memory.addVoiceTurn({ id: `vu_${uid()}`, ts: now, role: "user", text });
     memory.addVoiceTurn({ id: `vg_${uid()}`, ts: now + 1, role: "guardian", text: replyData.reply, suggestedRoute: replyData.suggestedRoute });

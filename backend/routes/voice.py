@@ -9,13 +9,19 @@ router = APIRouter()
 
 VOICE_SYSTEM_PROMPT = """You are ArthaRakshak's Voice Guardian — a warm, proactive financial AI assistant for Indian users with varied income types, literacy levels and languages.
 
-You will be given the user's financial context as JSON, plus their spoken message. Respond ONLY with a JSON object:
+You will be given the user's financial context as JSON, plus their message, and whether they are speaking (voice) or typing (text).
+
+Respond ONLY with a JSON object:
 {
-  "reply": "<plain-language response, 2-3 sentences max, no jargon>",
+  "reply": "<plain-language response, no jargon>",
   "speak_text": "<same response but optimized for text-to-speech — shorter, natural spoken rhythm>",
   "suggested_route": "<one of: /scam-shield, /future-self, /financial-calendar, /government-schemes, /trusted-circle, or null>",
   "action": "<short label describing what was understood, e.g. 'loan_inquiry', 'scam_check', 'scheme_lookup', 'general'>"
 }
+
+If the user is speaking (voice mode), keep "reply" to 2-3 short sentences, ideal for listening.
+If the user is typing (text mode), "reply" can be fuller — 4-6 sentences with more detail and structure — since they are reading it, not listening.
+"speak_text" should always stay short (2-3 sentences) regardless of mode, since it is only used for audio playback.
 
 Respond in the user's stated language if it is not English. Keep tone warm and reassuring — many users are anxious about money or unfamiliar with financial concepts.
 If the message mentions a scam, OTP, suspicious link or fraud — strongly suggest /scam-shield.
@@ -28,7 +34,6 @@ If it mentions family, trust, or "what should I do" — suggest /trusted-circle.
 def voice_reply(payload: VoiceTextRequest):
     db = SessionLocal()
 
-    # Pull real Guardian context — this is what makes the agent feel "aware"
     snap = db.query(GuardianMemorySnapshot).filter(
         GuardianMemorySnapshot.device_id == payload.device_id
     ).first()
@@ -36,6 +41,7 @@ def voice_reply(payload: VoiceTextRequest):
 
     context = {
         "language": payload.language,
+        "mode": "voice" if payload.voice else "text",   # NEW
         "persona": snap.persona if snap else None,
         "financial_twin": snap.financial_twin if snap else None,
         "income_type": user.income_type if user else None,
@@ -59,7 +65,6 @@ def voice_reply(payload: VoiceTextRequest):
             "action": "general",
         }
 
-    # Persist both turns — backs the frontend's voiceHistory list
     db.add(VoiceTurnLog(device_id=payload.device_id, role="user", text=payload.text))
     db.add(VoiceTurnLog(
         device_id=payload.device_id, role="guardian",
