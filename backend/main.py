@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from db import Base, engine
-from routes import memory, scam, voice, future_self, trends
+from routes import memory, scam, voice, future_self, trends, schemes
 
 Base.metadata.create_all(bind=engine)
 
@@ -20,6 +20,7 @@ app.include_router(scam.router, prefix="/api")
 app.include_router(voice.router, prefix="/api")
 app.include_router(future_self.router, prefix="/api")
 app.include_router(trends.router, prefix="/api")
+app.include_router(schemes.router, prefix="/api")
 
 @app.get("/")
 def root():

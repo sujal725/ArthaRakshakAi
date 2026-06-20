@@ -1,7 +1,7 @@
 import type { IncomeType, Concern } from "@/context/AppContext";
 
 export type SchemeTag =
-  | "farmer" | "woman" | "student" | "senior" | "gig" | "business" | "salary" | "retired";
+  | "farmer" | "woman" | "student" | "senior" | "gig" | "business" | "salary" | "retired" | "disabled";
 
 export interface Scheme {
   id: string;
@@ -27,7 +27,7 @@ export const SCHEMES: Scheme[] = [
     difficulty: "easy",
     steps: ["Register on portal", "Verify land records", "Receive DBT every 4 months"],
     tags: ["farmer"],
-    officialUrl: "https://www.pmkisan.gov.in",
+    officialUrl: "https://pmkisan.gov.in",
   },
   {
     id: "mudra",
@@ -63,7 +63,7 @@ export const SCHEMES: Scheme[] = [
     difficulty: "easy",
     steps: ["Enroll at bank", "Auto-debit consent", "Renewed annually"],
     tags: ["salary", "gig", "farmer", "business"],
-    officialUrl: "https://jansuraksha.gov.in",
+    officialUrl: "https://www.jansuraksha.gov.in/Forms-PMJJBY.aspx",
   },
   {
     id: "apy",
@@ -75,7 +75,7 @@ export const SCHEMES: Scheme[] = [
     difficulty: "easy",
     steps: ["Open APY at bank", "Pick pension slab", "Auto-debit till age 60"],
     tags: ["gig", "farmer", "salary"],
-    officialUrl: "https://www.npscra.nsdl.co.in/scheme-details.php",
+    officialUrl: "https://npscra.nsdl.co.in/scheme-details.php",
   },
   {
     id: "standup",
@@ -99,7 +99,7 @@ export const SCHEMES: Scheme[] = [
     difficulty: "easy",
     steps: ["Open at post office or bank", "Deposit annually", "Mature at 21 years"],
     tags: ["woman", "salary", "farmer"],
-    officialUrl: "https://www.indiapost.gov.in/Financial/Pages/Content/Sukanya-Samriddhi-Account.aspx",
+    officialUrl: "https://www.indiapost.gov.in/Financial/pages/content/sukanya-samriddhi-account.aspx",
   },
   {
     id: "pmfby",
@@ -113,6 +113,154 @@ export const SCHEMES: Scheme[] = [
     tags: ["farmer"],
     officialUrl: "https://pmfby.gov.in",
   },
+
+  // ---------- Disability schemes (previously missing entirely) ----------
+  {
+    id: "adip",
+    name: "ADIP Scheme",
+    benefit: "Free/subsidised assistive devices (wheelchairs, hearing aids, prosthetics)",
+    benefits: [
+      "Free aids for those below poverty line",
+      "50% subsidy for moderate income groups",
+      "Covers wheelchairs, hearing aids, Braille kits, prosthetics, tricycles",
+    ],
+    eligibility: "Persons with disabilities (40%+ disability) with valid UDID/disability certificate",
+    documents: ["UDID card / disability certificate", "Income certificate", "Aadhaar", "Passport-size photo"],
+    difficulty: "easy",
+    steps: ["Apply via implementing NGO/ALIMCO", "Disability assessment camp", "Device issued/fitted"],
+    tags: ["disabled"],
+    officialUrl: "https://www.disabilityaffairs.gov.in/content/page/adip.php",
+  },
+  {
+    id: "nhfdc-loan",
+    name: "NHFDC Concessional Loan",
+    benefit: "Low-interest loans (5-8%) for self-employment",
+    benefits: [
+      "Loans up to ₹30 lakh for self-employment ventures",
+      "Interest rates as low as 5% for women/below-poverty applicants",
+      "Covers business, vocational training, education loans",
+    ],
+    eligibility: "Persons with disabilities (40%+) seeking self-employment or higher education",
+    documents: ["UDID/disability certificate", "Project report", "Aadhaar", "Bank account"],
+    difficulty: "medium",
+    steps: ["Apply through State Channelising Agency", "Submit project proposal", "Loan sanction & disbursal"],
+    tags: ["disabled", "business"],
+    officialUrl: "https://www.nhfdc.nic.in",
+  },
+  {
+    id: "disability-pension",
+    name: "Indira Gandhi National Disability Pension Scheme",
+    benefit: "Monthly pension of ₹300-₹1,000 for severely disabled",
+    benefits: [
+      "Monthly pension (amount varies by state top-up)",
+      "Direct bank transfer",
+      "No repayment — pure social security support",
+    ],
+    eligibility: "Persons with 80%+ disability or multiple disabilities, BPL household, aged 18-79",
+    documents: ["UDID/disability certificate", "BPL certificate", "Aadhaar", "Bank account", "Age proof"],
+    difficulty: "easy",
+    steps: ["Apply at Gram Panchayat/Municipal office", "Verification", "Monthly DBT begins"],
+    tags: ["disabled", "senior"],
+    officialUrl: "https://nsap.nic.in/Guidelines/igndps_guidelines.pdf",
+  },
+  {
+    id: "udid",
+    name: "UDID Card (Unique Disability ID)",
+    benefit: "Single ID unlocking all disability scheme benefits nationally",
+    benefits: [
+      "Universal proof of disability accepted across India",
+      "Required gateway document for ADIP, pension, reservations, tax benefits",
+      "Free to apply, issued digitally",
+    ],
+    eligibility: "Any person with a certified disability under the RPWD Act 2016",
+    documents: ["Medical assessment certificate", "Aadhaar", "Passport-size photo", "Address proof"],
+    difficulty: "easy",
+    steps: ["Register on UDID portal", "Attend medical board assessment", "Download e-card"],
+    tags: ["disabled"],
+    officialUrl: "https://www.swavlambancard.gov.in",
+  },
+  {
+    id: "deendayal-disability-rehab",
+    name: "Deendayal Disabled Rehabilitation Scheme (DDRS)",
+    benefit: "Funding for rehab, education & vocational training via NGOs",
+    benefits: [
+      "Special schools and vocational training centres",
+      "Early intervention and therapy services",
+      "Community-based rehabilitation support",
+    ],
+    eligibility: "Persons with disabilities accessing NGO-run rehabilitation/education centres",
+    documents: ["UDID/disability certificate", "Aadhaar", "Enrollment proof with partner NGO"],
+    difficulty: "medium",
+    steps: ["Locate a DDRS-registered NGO nearby", "Enroll for relevant program", "Avail therapy/training"],
+    tags: ["disabled", "student"],
+    officialUrl: "https://disabilityaffairs.gov.in/content/page/ddrs.php",
+  },
+  {
+    id: "disability-tax-80u",
+    name: "Income Tax Deduction (Section 80U / 80DD)",
+    benefit: "Tax deduction ₹75,000-₹1,25,000 for disability",
+    benefits: [
+      "₹75,000 deduction for 40-79% disability, ₹1,25,000 for 80%+",
+      "Section 80DD covers caregiver expenses for dependents with disability",
+      "Directly reduces taxable income — no separate application",
+    ],
+    eligibility: "Taxpayer with certified disability, or taxpayer supporting a dependent with disability",
+    documents: ["UDID/medical certificate (Form 10-IA if needed)", "PAN", "ITR filing"],
+    difficulty: "easy",
+    steps: ["Obtain disability certificate from a govt hospital", "Claim deduction while filing ITR"],
+    tags: ["disabled", "salary", "business"],
+    officialUrl: "https://www.incometax.gov.in",
+  },
+
+  // ---------- Additional realistic schemes for broader category coverage ----------
+  {
+    id: "nps",
+    name: "National Pension System (NPS)",
+    benefit: "Market-linked retirement corpus + tax benefits",
+    benefits: [
+      "Additional ₹50,000 tax deduction under Section 80CCD(1B)",
+      "Choice of equity/debt allocation",
+      "Portable across jobs and locations",
+    ],
+    eligibility: "Indian citizens aged 18-70, especially salaried employees",
+    documents: ["Aadhaar", "PAN", "Bank account", "Photo"],
+    difficulty: "easy",
+    steps: ["Open NPS account via employer or eNPS portal", "Choose fund manager & allocation", "Contribute monthly/annually"],
+    tags: ["salary", "business"],
+    officialUrl: "https://npscra.nsdl.co.in",
+  },
+  {
+    id: "vaya-vandana",
+    name: "Pradhan Mantri Vaya Vandana Yojana",
+    benefit: "Guaranteed pension for senior citizens",
+    benefits: [
+      "Guaranteed return ~7.4% p.a. (LIC-administered)",
+      "Monthly/quarterly/annual payout options",
+      "10-year guaranteed pension plan",
+    ],
+    eligibility: "Senior citizens aged 60+",
+    documents: ["Aadhaar", "Age proof", "Bank account"],
+    difficulty: "easy",
+    steps: ["Purchase via LIC branch or online", "Choose payout frequency", "Receive guaranteed pension"],
+    tags: ["retired", "senior"],
+    officialUrl: "https://licindia.in/Products/Pension-Plans/Pradhan-Mantri-Vaya-Vandana-Yojana-1",
+  },
+  {
+    id: "e-shram",
+    name: "e-Shram Card (Unorganised Workers)",
+    benefit: "₹2 lakh accident insurance + access to welfare schemes",
+    benefits: [
+      "Free accidental insurance cover up to ₹2 lakh",
+      "National database unlocking gig/unorganised worker welfare schemes",
+      "Portable social security ID",
+    ],
+    eligibility: "Unorganised sector and gig workers aged 16-59",
+    documents: ["Aadhaar", "Bank account", "Mobile number"],
+    difficulty: "easy",
+    steps: ["Register at eshram.gov.in or CSC", "Verify via Aadhaar OTP", "Receive e-Shram card"],
+    tags: ["gig"],
+    officialUrl: "https://eshram.gov.in",
+  },
 ];
 
 const INCOME_TO_TAG: Record<IncomeType, SchemeTag> = {
@@ -124,17 +272,33 @@ const INCOME_TO_TAG: Record<IncomeType, SchemeTag> = {
   retired: "retired",
 };
 
-export function getEligibleSchemes(filterTag: SchemeTag | null, opts: { incomeType: IncomeType | null; concerns: Concern[] }): { scheme: Scheme; match: number }[] {
+/**
+ * Returns ONLY schemes matching the selected category tag.
+ * If no tag is selected, falls back to the user's income-type tag so the
+ * page is never empty, but a category filter always narrows results —
+ * this fixes the bug where PM-KISAN showed for every income type.
+ */
+export function getEligibleSchemes(
+  filterTag: SchemeTag | null,
+  opts: { incomeType: IncomeType | null; concerns: Concern[] },
+): { scheme: Scheme; match: number }[] {
   const userTag = opts.incomeType ? INCOME_TO_TAG[opts.incomeType] : null;
-  return SCHEMES
+  const effectiveTag = filterTag ?? userTag;
+
+  const pool = effectiveTag
+    ? SCHEMES.filter((s) => s.tags.includes(effectiveTag))
+    : SCHEMES;
+
+  return pool
     .map((scheme) => {
-      let match = 50;
-      if (filterTag && scheme.tags.includes(filterTag)) match += 30;
-      if (userTag && scheme.tags.includes(userTag)) match += 20;
+      // Deterministic fallback score (used only if live AI match isn't available yet).
+      // Real match % + reasoning now comes from /api/schemes/match — see government-schemes.tsx.
+      let match = 60;
+      if (effectiveTag && scheme.tags.includes(effectiveTag)) match += 25;
       if (opts.concerns.includes("schemes")) match += 5;
       if (scheme.difficulty === "easy") match += 5;
-      if (scheme.difficulty === "hard") match -= 5;
-      return { scheme, match: Math.max(40, Math.min(98, match)) };
+      if (scheme.difficulty === "hard") match -= 10;
+      return { scheme, match: Math.max(40, Math.min(95, match)) };
     })
     .sort((a, b) => b.match - a.match);
 }
@@ -162,4 +326,5 @@ export const TAG_LABELS: Record<SchemeTag, string> = {
   business: "Business Owner",
   salary: "Salary Employee",
   retired: "Retired",
+  disabled: "Person with Disability",
 };

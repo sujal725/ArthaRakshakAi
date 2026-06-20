@@ -22,6 +22,31 @@ import { useEffect } from "react";
 import schemesHero from "@/assets/govt-schemes-hero.png";
 import finderImg from "@/assets/scheme-finder.png";
 
+interface SchemeMatchResult { id: string; match: number; reason: string }
+
+async function callSchemeMatchAPI(opts: {
+  incomeType: string | null;
+  category: string | null;
+  concerns: string[];
+  candidates: { id: string; name: string; eligibility: string; tags: string[] }[];
+}): Promise<SchemeMatchResult[]> {
+  const deviceId = localStorage.getItem("artharakshak_device_id") ?? "";
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/schemes/match`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      device_id: deviceId,
+      income_type: opts.incomeType,
+      category: opts.category,
+      concerns: opts.concerns,
+      candidates: opts.candidates,
+    }),
+  });
+  if (!res.ok) throw new Error("Scheme match request failed");
+  const data = await res.json();
+  return data.results as SchemeMatchResult[];
+}
+
 export const Route = createFileRoute("/government-schemes")({
   head: () => ({
     meta: [
@@ -44,7 +69,47 @@ function GovSchemesGuarded() {
   const defaultTag: SchemeTag | null = incomeType ? INCOME_TO_TAG[incomeType] ?? null : null;
   const [activeTag, setActiveTag] = useState<SchemeTag | null>(defaultTag);
 
-  const sorted = useMemo(() => getEligibleSchemes(activeTag, { incomeType, concerns }), [activeTag, incomeType, concerns]);
+  // Filtered, category-scoped candidate list (deterministic fallback scores)
+  const filtered = useMemo(() => getEligibleSchemes(activeTag, { incomeType, concerns }), [activeTag, incomeType, concerns]);
+
+  // Live AI match scores — overwrite the fallback scores in `filtered` once they arrive
+  const [aiResults, setAiResults] = useState<Record<string, SchemeMatchResult>>({});
+  const [matchLoading, setMatchLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMatchLoading(true);
+    callSchemeMatchAPI({
+      incomeType,
+      category: activeTag,
+      concerns,
+      candidates: filtered.map(({ scheme }) => ({
+        id: scheme.id, name: scheme.name, eligibility: scheme.eligibility, tags: scheme.tags,
+      })),
+    })
+      .then((results) => {
+        if (cancelled) return;
+        const byId: Record<string, SchemeMatchResult> = {};
+        for (const r of results) byId[r.id] = r;
+        setAiResults(byId);
+      })
+      .catch(() => { /* fall back to deterministic scores already in `filtered` */ })
+      .finally(() => { if (!cancelled) setMatchLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTag, incomeType]);
+
+  // Merge: AI match % + reason when available, deterministic fallback otherwise
+  const sorted = useMemo(() => {
+    return filtered
+      .map(({ scheme, match }) => ({
+        scheme,
+        match: aiResults[scheme.id]?.match ?? match,
+        reason: aiResults[scheme.id]?.reason ?? null,
+      }))
+      .sort((a, b) => b.match - a.match);
+  }, [filtered, aiResults]);
+
   const reco = useMemo(() => getSchemeRecommendations({ incomeType, concerns, personaName: persona.name }), [incomeType, concerns, persona]);
 
   useEffect(() => {
@@ -52,7 +117,7 @@ function GovSchemesGuarded() {
     memory.setRecommendedSchemes(top);
     memory.logAction({ module: "schemes", action: `Matched ${top.length} schemes — top: ${sorted[0]?.scheme.name ?? ""}`, riskImpact: -8 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTag]);
+  }, [activeTag, sorted.length]);
 
   const allTags = Object.keys(TAG_LABELS) as SchemeTag[];
 
@@ -88,9 +153,8 @@ function GovSchemesGuarded() {
                         type="button"
                         onClick={() => setActiveTag(active ? null : tag)}
                         aria-pressed={active}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                          active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-accent"
-                        }`}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-accent"
+                          }`}
                       >
                         {TAG_LABELS[tag]}
                       </button>
@@ -126,8 +190,18 @@ function GovSchemesGuarded() {
 
           {/* Scheme cards */}
           <section className="mt-6 grid gap-5 md:grid-cols-2">
-            {sorted.map(({ scheme, match }) => (
-              <SchemeCard key={scheme.id} scheme={scheme} match={match} t={t} />
+            {matchLoading && sorted.length === 0 && (
+              <p className="col-span-2 rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                Matching schemes for this category…
+              </p>
+            )}
+            {sorted.length === 0 && !matchLoading && (
+              <p className="col-span-2 rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                No schemes found for this category yet.
+              </p>
+            )}
+            {sorted.map(({ scheme, match, reason }) => (
+              <SchemeCard key={scheme.id} scheme={scheme} match={match} reason={reason} t={t} />
             ))}
           </section>
 
@@ -166,7 +240,7 @@ function GovSchemesGuarded() {
   );
 }
 
-function SchemeCard({ scheme, match, t }: { scheme: Scheme; match: number; t: (k: string) => string }) {
+function SchemeCard({ scheme, match, reason, t }: { scheme: Scheme; match: number; reason?: string | null; t: (k: string) => string }) {
   const eligible = match >= 70;
   return (
     <article className="flex flex-col rounded-3xl border border-border bg-card p-6 shadow-sm card-lift">
@@ -190,6 +264,12 @@ function SchemeCard({ scheme, match, t }: { scheme: Scheme; match: number; t: (k
           <DifficultyBadge difficulty={scheme.difficulty} t={t} />
         </div>
       </div>
+
+      {reason && (
+        <p className="mt-3 rounded-xl bg-accent/60 px-3 py-2 text-xs text-accent-foreground">
+          <span className="font-semibold text-primary">AI: </span>{reason}
+        </p>
+      )}
 
       <div className="mt-5">
         <p className="flex items-center gap-1.5 text-xs font-semibold uppercase text-primary"><Award className="size-3.5" /> {t("gs_benefits")}</p>
@@ -234,9 +314,9 @@ function SchemeCard({ scheme, match, t }: { scheme: Scheme; match: number; t: (k
 
 function DifficultyBadge({ difficulty, t }: { difficulty: Scheme["difficulty"]; t: (k: string) => string }) {
   const map = {
-    easy:   { chip: "bg-primary/15 text-primary",                label: t("gs_easy") },
-    medium: { chip: "bg-warning/20 text-warning-foreground",     label: t("gs_medium") },
-    hard:   { chip: "bg-destructive/15 text-destructive",        label: t("gs_hard") },
+    easy: { chip: "bg-primary/15 text-primary", label: t("gs_easy") },
+    medium: { chip: "bg-warning/20 text-warning-foreground", label: t("gs_medium") },
+    hard: { chip: "bg-destructive/15 text-destructive", label: t("gs_hard") },
   } as const;
   const s = map[difficulty];
   return (

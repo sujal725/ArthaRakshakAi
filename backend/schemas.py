@@ -80,3 +80,17 @@ class FutureSelfAdviceRequest(BaseModel):
     final_value: Optional[float] = None
     total_invested: Optional[float] = None
     growth_earned: Optional[float] = None
+# ---------- Government Schemes ----------
+
+class SchemeCandidate(BaseModel):
+    id: str
+    name: str
+    eligibility: str
+    tags: List[str]
+
+class SchemeMatchRequest(BaseModel):
+    device_id: str
+    income_type: Optional[str] = None
+    category: Optional[str] = None
+    concerns: List[str] = []
+    candidates: List[SchemeCandidate]
