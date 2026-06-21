@@ -7,6 +7,12 @@ from schemas import VoiceTextRequest
 
 router = APIRouter()
 
+# add near the top, alongside VOICE_SYSTEM_PROMPT
+LANGUAGE_NAMES = {
+    "en": "English", "hi": "Hindi", "mr": "Marathi",
+    "ta": "Tamil", "kn": "Kannada", "te": "Telugu", "bn": "Bengali",
+}
+
 VOICE_SYSTEM_PROMPT = """You are ArthaRakshak's Voice Guardian — a warm, proactive financial AI assistant for Indian users with varied income types, literacy levels and languages.
 
 You will be given the user's financial context as JSON, plus their message, and whether they are speaking (voice) or typing (text).
@@ -52,7 +58,13 @@ def voice_reply(payload: VoiceTextRequest):
         "trusted_circle_size": len(snap.trusted_circle) if snap and snap.trusted_circle else 0,
     }
 
-    prompt = f"User context: {json.dumps(context)}\n\nUser said: \"{payload.text}\""
+    lang_name = LANGUAGE_NAMES.get(payload.language, "English")
+    prompt = (
+        f"User context: {json.dumps(context)}\n\n"
+        f"User said: \"{payload.text}\"\n\n"
+        f"IMPORTANT: Write BOTH \"reply\" and \"speak_text\" entirely in {lang_name}. "
+        f"Do not respond in English unless {lang_name} is English."
+    )
     raw = ask_llm(prompt, system=VOICE_SYSTEM_PROMPT, json_mode=True)
 
     try:

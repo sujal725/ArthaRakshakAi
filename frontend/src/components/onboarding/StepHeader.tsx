@@ -1,7 +1,8 @@
 import { Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+// import { toast } from "sonner";
 import { useT } from "@/i18n/translations";
+import { Link } from "@tanstack/react-router";
 
 export function StepHeader({ title, help }: { title: string; help: string }) {
   const t = useT();
@@ -12,11 +13,13 @@ export function StepHeader({ title, help }: { title: string; help: string }) {
         <p className="mt-2 text-muted-foreground">{help}</p>
       </div>
       <Button
+        asChild
         variant="outline"
         className="shrink-0 rounded-full border-primary/30 text-primary"
-        onClick={() => toast.message(t("listening"), { description: t("speakInstead") })}
       >
-        <Mic className="mr-1 size-4" /> {t("speakInstead")}
+        <Link to="/voice-mode">
+          <Mic className="mr-1 size-4" /> {t("speakInstead")}
+        </Link>
       </Button>
     </div>
   );

@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Mic, MicOff, LogOut } from "lucide-react";
+import { Mic, LogOut } from "lucide-react";
 import { Logo } from "./Logo";
 import { useApp, type Language } from "@/context/AppContext";
 import { LANGUAGES, useT } from "@/i18n/translations";
@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+// import { toast } from "sonner";
 
 type NavTo =
   | "/dashboard" | "/scam-shield" | "/financial-calendar" | "/future-self"
@@ -90,17 +90,10 @@ export function Navbar() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button
-            variant={voiceMode ? "default" : "ghost"}
-            size="icon"
-            aria-label={voiceMode ? "Disable voice mode" : "Enable voice mode"}
-            onClick={() => {
-              setVoiceMode(!voiceMode);
-              toast.message(voiceMode ? "Voice mode off" : "Voice mode on — speak anywhere");
-            }}
-            className="rounded-full"
-          >
-            {voiceMode ? <Mic className="size-4" /> : <MicOff className="size-4" />}
+          <Button asChild variant="ghost" size="icon" aria-label="Open Voice Guardian" className="rounded-full">
+            <Link to="/voice-mode">
+              <Mic className="size-4" />
+            </Link>
           </Button>
 
           {isAuthenticated ? (

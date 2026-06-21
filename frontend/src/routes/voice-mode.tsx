@@ -7,7 +7,8 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { TwinHint } from "@/components/TwinHint";
-import { useApp } from "@/context/AppContext";
+import { useApp, type Language } from "@/context/AppContext";
+import { LANGUAGES } from "@/i18n/translations";
 import { useGuardianMemory } from "@/context/GuardianMemory";
 
 import { transcribeAudio } from "@/lib/voice";
@@ -39,12 +40,14 @@ const EXAMPLES = [
   "माझ्यासाठी कोणती सरकारी योजना आहे?",
 ];
 
+const VOICE_LANGUAGES = LANGUAGES.filter((l) => ["en", "hi", "mr", "kn"].includes(l.code));
+
 type Phase = "idle" | "listening" | "thinking" | "speaking";
 
 function uid() { return Math.random().toString(36).slice(2); }
 
 function VoicePage() {
-  const { a11yMode, setA11yMode, incomeType, language } = useApp();
+  const { a11yMode, setA11yMode, incomeType, language, setLanguage } = useApp();
   const memory = useGuardianMemory();
   const [phase, setPhase] = useState<Phase>("idle");
   const [currentUser, setCurrentUser] = useState<string | null>(null);
@@ -114,6 +117,34 @@ function VoicePage() {
         </header>
 
         <TwinHint context="voice" />
+
+        {/* Language selection */}
+        <section className="mb-6 rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Choose your language</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Your Guardian will listen, reply and speak back in this language.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {VOICE_LANGUAGES.map((l) => {
+              const selected = language === l.code;
+              return (
+                <button
+                  key={l.code}
+                  type="button"
+                  onClick={() => setLanguage(l.code as Language)}
+                  aria-pressed={selected}
+                  className={`rounded-full border px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    selected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-muted-foreground hover:bg-accent"
+                  }`}
+                >
+                  {l.native} <span className={selected ? "opacity-80" : "opacity-60"}>· {l.english}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
         {/* Accessibility Mode toggle */}
         <section className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-4">
