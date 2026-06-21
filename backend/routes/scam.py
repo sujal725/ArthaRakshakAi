@@ -33,8 +33,15 @@ If a reason isn't tied to a specific phrase (e.g. general pattern-matching), set
 Always return exactly 3 reasons and 3 recommendations, even for safe messages.
 """
 
-def _analyze(text: str) -> dict:
-    raw = ask_llm(text, system=SCAM_SYSTEM_PROMPT, json_mode=True)
+LANGUAGE_NAMES = {
+    "en": "English", "hi": "Hindi", "mr": "Marathi",
+    "ta": "Tamil", "kn": "Kannada", "te": "Telugu", "bn": "Bengali",
+}
+
+def _analyze(text: str, language: str = "en") -> dict:
+    lang_name = LANGUAGE_NAMES.get(language, "English")
+    contextual_prompt = f"{text}\n\n(Respond with 'explanation' and 'recommendations' text in {lang_name}. Keep 'evidence' as the exact original-language substring from the message.)"
+    raw = ask_llm(contextual_prompt, system=SCAM_SYSTEM_PROMPT, json_mode=True)
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
@@ -72,8 +79,8 @@ def _log(db, device_id, source_type, input_text, result):
     db.commit()
 
 @router.post("/scam/analyze-text")
-def analyze_text(device_id: str = Form(...), message: str = Form(...)):
-    result = _analyze(message)
+def analyze_text(device_id: str = Form(...), message: str = Form(...), language: str = Form("en")):
+    result = _analyze(message, language)
     db = SessionLocal()
     if not db.query(User).filter(User.device_id == device_id).first():
         db.add(User(device_id=device_id))
@@ -83,7 +90,7 @@ def analyze_text(device_id: str = Form(...), message: str = Form(...)):
     return result
 
 @router.post("/scam/analyze-image")
-def analyze_image(device_id: str = Form(...), file: UploadFile = File(...)):
+def analyze_image(device_id: str = Form(...), file: UploadFile = File(...), language: str = Form("en")):
     image = Image.open(file.file)
     extracted = pytesseract.image_to_string(image).strip()
 
@@ -97,7 +104,7 @@ def analyze_image(device_id: str = Form(...), file: UploadFile = File(...)):
             "extracted_text": "",
         }
 
-    result = _analyze(extracted)
+    result = _analyze(extracted, language)
     result["extracted_text"] = extracted
 
     # Validate evidence is actually present in the extracted text — drop any

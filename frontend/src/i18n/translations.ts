@@ -98,6 +98,11 @@ const en: Dict = {
   d_qa4Help: "Find ones you qualify for",
   d_comingSoon: "Coming in the next stage",
   d_rising: "2 risks rising",
+  d_liveAlerts: "Live alerts from your Guardian",
+  d_noActivity: "Your Guardian will log every protection action here.",
+  d_thinking: "Your Guardian is reading your numbers…",
+  d_journeyEmpty: "Your Guardian journey begins here.",
+  d_journeyEmptyHelp: "Check a message, plan a future or match a scheme to earn your first milestone.",
   axis_scams: "Scams",
   axis_loans: "Loans",
   axis_cash: "Cash Flow",
@@ -337,6 +342,11 @@ const hi: Dict = {
   d_qa3: "वित्तीय कैलेंडर", d_qa3Help: "EMI, SIP और वेतन तिथियाँ",
   d_qa4: "सरकारी योजनाएँ", d_qa4Help: "अपने अनुरूप योजना ढूँढें",
   d_comingSoon: "अगले चरण में आ रहा है", d_rising: "2 जोखिम बढ़ रहे हैं",
+  d_liveAlerts: "आपके गार्डियन की वास्तविक चेतावनियाँ",
+  d_noActivity: "आपका गार्डियन यहाँ हर सुरक्षा कार्रवाई दर्ज करेगा।",
+  d_thinking: "आपका गार्डियन आपके आंकड़े पढ़ रहा है…",
+  d_journeyEmpty: "आपकी गार्डियन यात्रा यहाँ से शुरू होती है।",
+  d_journeyEmptyHelp: "अपना पहला मील का पत्थर पाने के लिए संदेश जाँचें, भविष्य की योजना बनाएं या योजना से मिलाएं।",
   axis_scams: "धोखा", axis_loans: "ऋण", axis_cash: "नकदी", axis_savings: "बचत", axis_schemes: "योजनाएँ",
 };
 
@@ -377,6 +387,11 @@ const mr: Dict = {
   d_qa3: "आर्थिक कॅलेंडर", d_qa3Help: "EMI, SIP, पगार तारखा",
   d_qa4: "सरकारी योजना", d_qa4Help: "योग्य योजना शोधा",
   d_comingSoon: "पुढील टप्प्यात येत आहे", d_rising: "2 जोखमी वाढत आहेत",
+  d_liveAlerts: "तुमच्या गार्डियनकडून थेट सूचना",
+  d_noActivity: "तुमचा गार्डियन इथे प्रत्येक संरक्षण कृती नोंदवेल.",
+  d_thinking: "तुमचा गार्डियन तुमचे आकडे वाचत आहे…",
+  d_journeyEmpty: "तुमचा गार्डियन प्रवास इथून सुरू होतो.",
+  d_journeyEmptyHelp: "तुमचा पहिला टप्पा मिळवण्यासाठी संदेश तपासा, भविष्याची योजना करा किंवा योजना जुळवा.",
   axis_scams: "फसवणूक", axis_loans: "कर्ज", axis_cash: "रोख", axis_savings: "बचत", axis_schemes: "योजना",
 };
 

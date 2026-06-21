@@ -25,6 +25,11 @@ Scoring guide:
 Be honest and varied in scoring — do not give every scheme the same score. Base it on genuine eligibility match, not enthusiasm.
 """
 
+LANGUAGE_NAMES = {
+    "en": "English", "hi": "Hindi", "mr": "Marathi",
+    "ta": "Tamil", "kn": "Kannada", "te": "Telugu", "bn": "Bengali",
+}
+
 @router.post("/schemes/match")
 def match_schemes(payload: SchemeMatchRequest):
     candidates_text = json.dumps([
@@ -36,7 +41,8 @@ def match_schemes(payload: SchemeMatchRequest):
         "category": payload.category,
         "concerns": payload.concerns,
     })
-    prompt = f"User profile: {profile_text}\n\nCandidate schemes: {candidates_text}"
+    lang_name = LANGUAGE_NAMES.get(payload.language, "English")
+    prompt = f"User profile: {profile_text}\n\nCandidate schemes: {candidates_text}\n\nWrite the 'reason' field in {lang_name}."
 
     raw = ask_llm(prompt, system=SCHEME_MATCH_SYSTEM_PROMPT, json_mode=True)
     try:

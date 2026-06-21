@@ -29,6 +29,7 @@ async function callSchemeMatchAPI(opts: {
   category: string | null;
   concerns: string[];
   candidates: { id: string; name: string; eligibility: string; tags: string[] }[];
+  language: string;
 }): Promise<SchemeMatchResult[]> {
   const deviceId = localStorage.getItem("artharakshak_device_id") ?? "";
   const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/schemes/match`, {
@@ -40,6 +41,7 @@ async function callSchemeMatchAPI(opts: {
       category: opts.category,
       concerns: opts.concerns,
       candidates: opts.candidates,
+      language: opts.language,
     }),
   });
   if (!res.ok) throw new Error("Scheme match request failed");
@@ -63,7 +65,7 @@ const INCOME_TO_TAG: Record<string, SchemeTag> = {
 
 function GovSchemesGuarded() {
   const t = useT();
-  const { incomeType, concerns } = useApp();
+  const { incomeType, concerns, language } = useApp();
   const memory = useGuardianMemory();
   const persona = useMemo(() => derivePersona(incomeType), [incomeType]);
   const defaultTag: SchemeTag | null = incomeType ? INCOME_TO_TAG[incomeType] ?? null : null;
@@ -86,6 +88,7 @@ function GovSchemesGuarded() {
       candidates: filtered.map(({ scheme }) => ({
         id: scheme.id, name: scheme.name, eligibility: scheme.eligibility, tags: scheme.tags,
       })),
+      language,
     })
       .then((results) => {
         if (cancelled) return;
@@ -97,7 +100,7 @@ function GovSchemesGuarded() {
       .finally(() => { if (!cancelled) setMatchLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTag, incomeType]);
+  }, [activeTag, incomeType, language]);
 
   // Merge: AI match % + reason when available, deterministic fallback otherwise
   const sorted = useMemo(() => {
@@ -112,12 +115,30 @@ function GovSchemesGuarded() {
 
   const reco = useMemo(() => getSchemeRecommendations({ incomeType, concerns, personaName: persona.name }), [incomeType, concerns, persona]);
 
+  const loggedTagRef = useState(() => ({ current: "" }))[0];
   useEffect(() => {
+    // Only fire once AI scores have actually loaded (avoid the deterministic-fallback
+    // pass triggering a duplicate notification before the real match arrives).
+    if (matchLoading) return;
     const top = sorted.slice(0, 3).map((s) => s.scheme.id);
-    memory.setRecommendedSchemes(top);
-    memory.logAction({ module: "schemes", action: `Matched ${top.length} schemes — top: ${sorted[0]?.scheme.name ?? ""}`, riskImpact: -8 });
+    if (top.length === 0) return;
+
+    const tagKey = `${activeTag ?? "none"}`;
+    if (loggedTagRef.current === tagKey) return; // already logged for this category
+    loggedTagRef.current = tagKey;
+
+    const reasonsMap: Record<string, string> = {};
+    for (const s of sorted.slice(0, 3)) {
+      if (s.reason) reasonsMap[s.scheme.id] = s.reason;
+    }
+    memory.setRecommendedSchemes(top, reasonsMap);
+    memory.logAction({
+      module: "schemes",
+      action: `Matched ${top.length} schemes — top: ${sorted[0]?.scheme.name ?? ""}`,
+      riskImpact: -8,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTag, sorted.length]);
+  }, [activeTag, matchLoading, sorted]);
 
   const allTags = Object.keys(TAG_LABELS) as SchemeTag[];
 

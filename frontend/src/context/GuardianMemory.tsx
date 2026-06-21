@@ -61,6 +61,7 @@ export interface GuardianMemoryState {
   scamRiskScore: number;
   cashFlowRisk: "low" | "medium" | "high";
   recommendedSchemes: string[];
+  schemeMatchReasons: Record<string, string>;
   futureGoal: string | null;
   trustedCircle: TrustedMember[];
   voiceHistory: VoiceTurn[];
@@ -73,7 +74,7 @@ export interface GuardianMemoryState {
 interface GuardianMemoryValue extends GuardianMemoryState {
   setScamRiskScore: (score: number) => void;
   setCashFlowRisk: (risk: "low" | "medium" | "high") => void;
-  setRecommendedSchemes: (ids: string[]) => void;
+  setRecommendedSchemes: (ids: string[], reasons?: Record<string, string>) => void;
   setFutureGoal: (goal: string | null) => void;
   setTrustedCircle: (members: TrustedMember[]) => void;
   addVoiceTurn: (turn: VoiceTurn) => void;
@@ -182,10 +183,10 @@ function deriveNewNotifications(prev: GuardianMemoryState, next: GuardianMemoryS
   for (const id of next.recommendedSchemes.slice(0, 2)) {
     if (!prev.recommendedSchemes.includes(id)) {
       push({
-        id: `scheme-${id}`,
+        id: `scheme-${id}-${slug(next.incomeType ?? "x")}`, // unique per scheme+income combo, prevents stale dupes across income changes
         type: "tip",
         title: `${prettyScheme(id)} matches your profile`,
-        description: "Based on your income, persona and concerns.",
+        description: next.schemeMatchReasons?.[id] ?? "Based on your income, persona and concerns.",
         route: "/government-schemes",
       });
     }
@@ -260,6 +261,15 @@ function prettyScheme(id: string): string {
     standup: "Stand-Up India",
     ssy: "Sukanya Samriddhi",
     pmfby: "PM Fasal Bima",
+    adip: "ADIP Scheme",
+    "nhfdc-loan": "NHFDC Loan",
+    "disability-pension": "Disability Pension",
+    udid: "UDID Card",
+    "deendayal-disability-rehab": "DDRS",
+    "disability-tax-80u": "Tax Deduction 80U",
+    nps: "NPS",
+    "vaya-vandana": "PM Vaya Vandana Yojana",
+    "e-shram": "e-Shram Card",
   } as Record<string, string>)[id] ?? id;
 }
 
@@ -287,6 +297,7 @@ function seedState(incomeType: IncomeType | null, concerns: Concern[]): Guardian
     scamRiskScore: 12,
     cashFlowRisk: "low",
     recommendedSchemes: [],
+    schemeMatchReasons: {},
     futureGoal: null,
     trustedCircle: [],
     voiceHistory: [],
@@ -316,23 +327,34 @@ export function GuardianMemoryProvider({ children }: { children: ReactNode }) {
     } catch { }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
+  const { monthlyIncome, monthlyExpenses, existingEmiTotal, hasEmergencyFund } = useApp();
   // Keep persona/twin/income in sync with AppContext changes (onboarding flows)
   useEffect(() => {
     setState((s) => {
-      if (s.incomeType === incomeType && s.topConcerns.join(",") === concerns.join(",")) return s;
-      const persona = derivePersona(incomeType);
-      const baseTwin = deriveFinancialTwin(incomeType, concerns, persona);
-      return {
+      const personaChanged = s.incomeType !== incomeType || s.topConcerns.join(",") !== concerns.join(",");
+      const persona = personaChanged ? derivePersona(incomeType) : s.persona;
+      const baseTwin = personaChanged ? deriveFinancialTwin(incomeType, concerns, persona) : s.financialTwin;
+      const financialTwin = personaChanged && s.financialTwin.title !== baseTwin.title ? baseTwin : s.financialTwin;
+
+      const next: GuardianMemoryState = {
         ...s,
         incomeType,
         topConcerns: concerns,
         persona,
-        financialTwin: s.financialTwin.title === baseTwin.title ? s.financialTwin : baseTwin,
-        riskTolerance: deriveRiskTolerance(s.financialTwin.title === baseTwin.title ? s.financialTwin : baseTwin),
+        financialTwin,
+        riskTolerance: deriveRiskTolerance(financialTwin),
       };
+      next.guardianScore = computeGuardianScore({
+        ...next,
+        monthlyIncome,
+        monthlyExpenses,
+        existingEmiTotal,
+        hasEmergencyFund,
+      });
+      next.guardianLevel = scoreToLevel(next.guardianScore);
+      return next;
     });
-  }, [incomeType, concerns]);
+  }, [incomeType, concerns, monthlyIncome, monthlyExpenses, existingEmiTotal, hasEmergencyFund]);
 
   // Persist
   useEffect(() => {
@@ -378,13 +400,12 @@ export function GuardianMemoryProvider({ children }: { children: ReactNode }) {
         }
 
         // Score + level
-        const storedState = (() => { try { return JSON.parse(localStorage.getItem("artharakshak_state_v1") ?? "{}"); } catch { return {}; } })();
         next.guardianScore = computeGuardianScore({
           ...next,
-          monthlyIncome: storedState.monthlyIncome ?? null,
-          monthlyExpenses: storedState.monthlyExpenses ?? null,
-          existingEmiTotal: storedState.existingEmiTotal ?? null,
-          hasEmergencyFund: storedState.hasEmergencyFund ?? null,
+          monthlyIncome,
+          monthlyExpenses,
+          existingEmiTotal,
+          hasEmergencyFund,
         });
         next.guardianLevel = scoreToLevel(next.guardianScore);
 
@@ -401,7 +422,7 @@ export function GuardianMemoryProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [],
+    [monthlyIncome, monthlyExpenses, existingEmiTotal, hasEmergencyFund],
   );
 
   const value: GuardianMemoryValue = useMemo(() => ({
@@ -409,7 +430,11 @@ export function GuardianMemoryProvider({ children }: { children: ReactNode }) {
     setScamRiskScore: (score) =>
       apply((s) => ({ ...s, scamRiskScore: Math.max(0, Math.min(100, score)) })),
     setCashFlowRisk: (risk) => apply((s) => ({ ...s, cashFlowRisk: risk })),
-    setRecommendedSchemes: (ids) => apply((s) => ({ ...s, recommendedSchemes: ids })),
+    setRecommendedSchemes: (ids, reasons) => apply((s) => ({
+      ...s,
+      recommendedSchemes: ids,
+      schemeMatchReasons: reasons ? { ...s.schemeMatchReasons, ...reasons } : s.schemeMatchReasons,
+    })),
     setFutureGoal: (goal) => apply((s) => ({ ...s, futureGoal: goal })),
     setTrustedCircle: (members) => apply((s) => ({ ...s, trustedCircle: members })),
     addVoiceTurn: (turn) =>

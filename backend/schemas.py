@@ -94,3 +94,4 @@ class SchemeMatchRequest(BaseModel):
     category: Optional[str] = None
     concerns: List[str] = []
     candidates: List[SchemeCandidate]
+    language: Optional[str] = "en"

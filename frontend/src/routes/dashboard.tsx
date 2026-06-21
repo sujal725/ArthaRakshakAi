@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ShieldAlert, AlertTriangle, Sparkles, MessageSquare, GitBranch, CalendarDays, FileText,
   TrendingUp, TrendingDown, X, Trophy, Lightbulb, Users, CheckCircle2, ArrowRight,
@@ -42,12 +42,21 @@ function Dashboard() {
       <main className="mx-auto max-w-[1280px] px-6 py-10">
         {/* Greeting */}
         <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{t("d_greeting")}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <span className="rounded-full bg-accent px-3 py-1 font-medium text-accent-foreground">{persona.name}</span>
-              <span>•</span>
-              <span>{t("d_protectedSince")}</span>
+          <div className="flex items-center gap-4">
+            <Link
+              to="/ai-assistant"
+              aria-label="Open AI Assistant chat"
+              className="grid size-12 shrink-0 place-items-center rounded-full bg-gradient-emerald text-primary-foreground shadow-lg shadow-primary/30 transition hover:scale-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/30"
+            >
+              <Sparkles className="size-5" aria-hidden />
+            </Link>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{t("d_greeting")}</h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <span className="rounded-full bg-accent px-3 py-1 font-medium text-accent-foreground">{persona.name}</span>
+                <span>•</span>
+                <span>{t("d_protectedSince")}</span>
+              </div>
             </div>
           </div>
         </header>
@@ -84,9 +93,46 @@ function Dashboard() {
 
 /* ---------- Financial Twin Hero ---------- */
 
+async function fetchDashboardInsight(payload: Record<string, unknown>): Promise<string> {
+  const deviceId = localStorage.getItem("artharakshak_device_id") ?? "";
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/insights/dashboard`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_id: deviceId, ...payload }),
+  });
+  if (!res.ok) throw new Error("Insight request failed");
+  const data = await res.json();
+  return data.insight as string;
+}
+
 function FinancialTwinHero() {
   const { financialTwin } = useGuardianMemory();
+  const { incomeType, monthlyIncome, monthlyExpenses, existingEmiTotal, hasEmergencyFund, dependentsCount, language } = useApp();
   const [open, setOpen] = useState(false);
+  const [liveInsight, setLiveInsight] = useState<string | null>(null);
+  const [insightLoading, setInsightLoading] = useState(true);
+
+
+
+  useEffect(() => {
+    let cancelled = false;
+    setInsightLoading(true);
+    fetchDashboardInsight({
+      persona_title: financialTwin.title,
+      income_type: incomeType,
+      monthly_income: monthlyIncome,
+      monthly_expenses: monthlyExpenses,
+      existing_emi_total: existingEmiTotal,
+      has_emergency_fund: hasEmergencyFund,
+      dependents_count: dependentsCount,
+      language,
+    })
+      .then((text) => { if (!cancelled) setLiveInsight(text); })
+      .catch(() => { if (!cancelled) setLiveInsight(null); })
+      .finally(() => { if (!cancelled) setInsightLoading(false); });
+    return () => { cancelled = true; };
+  }, [financialTwin.title, incomeType, monthlyIncome, monthlyExpenses, existingEmiTotal, hasEmergencyFund, dependentsCount, language]);
+
   return (
     <article className="relative overflow-hidden rounded-3xl bg-gradient-emerald p-7 text-primary-foreground shadow-xl shadow-primary/30">
       <img src={financialTwinImg} alt="" width={360} height={360} loading="lazy" className="pointer-events-none absolute -right-6 -bottom-6 size-48 opacity-90 animate-float-soft" />
@@ -97,8 +143,9 @@ function FinancialTwinHero() {
         <Chip>{financialTwin.spendingPattern.split(".")[0]}</Chip>
         <Chip>Confidence: {financialTwin.futureConfidence}%</Chip>
       </div>
-      <p className="mt-4 max-w-md text-sm opacity-95">{financialTwin.adviceStyle}</p>
-
+      <p className="mt-4 max-w-md text-sm opacity-95">
+        {insightLoading ? "Your Guardian is reading your numbers…" : (liveInsight ?? financialTwin.adviceStyle)}
+      </p>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           <Button className="mt-5 rounded-full bg-white text-primary hover:bg-white/90">
@@ -194,6 +241,7 @@ function NotificationCard({ n, onDismiss }: { n: GuardianNotification; onDismiss
 
 function RecentActivityCard() {
   const { actionHistory } = useGuardianMemory();
+  const t = useT();
   const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
   const rel = (ts: number) => {
     const diff = ts - Date.now();
@@ -208,7 +256,7 @@ function RecentActivityCard() {
       <h2 className="mb-3 text-lg font-semibold">Recent Guardian Activity</h2>
       {actionHistory.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-border bg-muted/30 p-5 text-center text-sm text-muted-foreground">
-          Your Guardian will log every protection action here.
+          {t("d_noActivity")}
         </p>
       ) : (
         <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
@@ -269,15 +317,17 @@ function Suggestion({ to, icon: Icon, label }: { to: "/scam-shield" | "/future-s
 
 function QuickActions() {
   const t = useT();
+  // d_qa1 (Check a message) intentionally dropped — already covered by the
+  // persistent Scam Shield nav item + the floating mic FAB, so a third
+  // duplicate entry point here added no real value.
   const items = [
-    { label: t("d_qa1"), help: t("d_qa1Help"), icon: MessageSquare, to: "/scam-shield" as const },
     { label: t("d_qa2"), help: t("d_qa2Help"), icon: GitBranch, to: "/future-self" as const },
     { label: t("d_qa3"), help: t("d_qa3Help"), icon: CalendarDays, to: "/financial-calendar" as const },
     { label: t("d_qa4"), help: t("d_qa4Help"), icon: FileText, to: "/government-schemes" as const },
     { label: "Trusted Circle", help: "Share decisions with people you trust", icon: Users, to: "/trusted-circle" as const },
   ];
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {items.map((i) => (
         <Link
           key={i.label}

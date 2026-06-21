@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n/translations";
+import { useApp } from "@/context/AppContext";
 import type { ScamVerdict } from "@/lib/scam";
 import { transcribeAudio, analyzeVoiceScam, type VoiceVerdict } from "@/lib/voice";
 import { useGuardianMemory } from "@/context/GuardianMemory";
@@ -149,11 +150,12 @@ function VerdictCard({ verdict, t }: { verdict: ScamVerdict; t: (k: string) => s
     </article>
   );
 }
-async function callScamAPI(message: string) {
+async function callScamAPI(message: string, language: string) {
   const deviceId = localStorage.getItem("artharakshak_device_id") ?? "";
   const formData = new FormData();
   formData.append("device_id", deviceId);
   formData.append("message", message);
+  formData.append("language", language);
   const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/scam/analyze-text`, {
     method: "POST",
     body: formData,
@@ -163,16 +165,15 @@ async function callScamAPI(message: string) {
 
 function MessageTab() {
   const t = useT();
+  const { language } = useApp();
   const memory = useGuardianMemory();
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [verdict, setVerdict] = useState<ScamVerdict | null>(null);
 
-
-
   async function run() {
     setLoading(true); setVerdict(null);
-    const v = await callScamAPI(text);
+    const v = await callScamAPI(text, language);
     setVerdict(v); setLoading(false);
     memory.setScamRiskScore(v.score);
     memory.logAction({
@@ -211,11 +212,12 @@ function ThinkingPulse({ label }: { label: string }) {
     </div>
   );
 }
-async function callScamImageAPI(file: File) {
+async function callScamImageAPI(file: File, language: string) {
   const deviceId = localStorage.getItem("artharakshak_device_id") ?? "";
   const formData = new FormData();
   formData.append("device_id", deviceId);
   formData.append("file", file);
+  formData.append("language", language);
   const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/scam/analyze-image`, {
     method: "POST",
     body: formData,
@@ -226,6 +228,7 @@ async function callScamImageAPI(file: File) {
 
 function ScreenshotTab() {
   const t = useT();
+  const { language } = useApp();
   const memory = useGuardianMemory();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -245,7 +248,7 @@ function ScreenshotTab() {
     if (!file) return;
     setLoading(true); setVerdict(null); setError(null);
     try {
-      const v = await callScamImageAPI(file);
+      const v = await callScamImageAPI(file, language);
       if (v.score === null || v.score === undefined) {
         setError("Could not read any text from this image clearly. Try a clearer screenshot or paste the text instead.");
         setLoading(false);
